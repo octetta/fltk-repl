@@ -72,7 +72,7 @@ endif()
 # extend it. It still links through the C++ toolchain because it pulls
 # in the C++ FLTK backend transitively.
 # ---------------------------------------------------------------------
-option(REPL_BUILD_DEMO "Build the example demo application" ON)
+option(REPL_BUILD_DEMO "Build the generic example application" OFF)
 
 if(REPL_BUILD_DEMO)
     add_executable(repl_demo examples/demo/main.c)
@@ -87,4 +87,80 @@ if(REPL_BUILD_DEMO)
     endif()
 endif()
 
-message(STATUS "fltk-repl: configured. Build with: cmake --build <builddir> -j")
+# ---------------------------------------------------------------------
+# Skred executable. It deliberately links against a packaged PULP
+# release, not a library from PULP's build directory.
+# ---------------------------------------------------------------------
+option(SKRED_BUILD_REPL "Build the Skred REPL application" ON)
+set(SKRED_ROOT "" CACHE PATH
+    "Packaged Skred release root (contains include/skred and lib64 or lib)")
+set(PULP_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../pulp" CACHE PATH
+    "PULP checkout used only to locate packaged releases under dist/")
+
+if(SKRED_BUILD_REPL)
+    if(NOT SKRED_ROOT AND DEFINED ENV{SKRED_ROOT})
+        set(SKRED_ROOT "$ENV{SKRED_ROOT}")
+    endif()
+
+    if(NOT SKRED_ROOT)
+        if(WIN32)
+            set(_skred_platform "windows-x86_64")
+        elseif(APPLE)
+            if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+                set(_skred_platform "macos-arm64")
+            else()
+                set(_skred_platform "macos-x86_64")
+            endif()
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
+            set(_skred_platform "linux-x86_64")
+        else()
+            set(_skred_platform "linux-${CMAKE_SYSTEM_PROCESSOR}")
+        endif()
+
+        file(GLOB _skred_releases
+            LIST_DIRECTORIES true
+            "${PULP_ROOT}/dist/${_skred_platform}/skred-*-maxed")
+        set(_skred_best_version "0")
+        foreach(_candidate IN LISTS _skred_releases)
+            get_filename_component(_name "${_candidate}" NAME)
+            if(_name MATCHES "^skred-([0-9]+\\.[0-9]+\\.[0-9]+)-maxed$")
+                set(_version "${CMAKE_MATCH_1}")
+                if(_version VERSION_GREATER _skred_best_version)
+                    set(_skred_best_version "${_version}")
+                    set(SKRED_ROOT "${_candidate}")
+                endif()
+            endif()
+        endforeach()
+    endif()
+
+    find_path(SKRED_INCLUDE_DIR
+        NAMES skred/api.h
+        HINTS "${SKRED_ROOT}/include"
+        NO_DEFAULT_PATH)
+    find_library(SKRED_API_LIBRARY
+        NAMES api
+        HINTS "${SKRED_ROOT}/lib64" "${SKRED_ROOT}/lib"
+        NO_DEFAULT_PATH)
+
+    if(NOT SKRED_INCLUDE_DIR OR NOT SKRED_API_LIBRARY)
+        message(FATAL_ERROR
+            "No packaged Skred release API was found.\n"
+            "Set -DSKRED_ROOT=/path/to/skred-<version>-maxed; that directory\n"
+            "must contain include/skred/api.h and lib64/libapi (or lib/libapi).")
+    endif()
+
+    add_executable(skred_repl examples/skred/main.c)
+    target_include_directories(skred_repl PRIVATE "${SKRED_INCLUDE_DIR}")
+    target_link_libraries(skred_repl PRIVATE replfltk "${SKRED_API_LIBRARY}")
+    set_target_properties(skred_repl PROPERTIES
+        LINKER_LANGUAGE CXX
+        BUILD_RPATH "${SKRED_ROOT}/lib64;${SKRED_ROOT}/lib")
+
+    if(WIN32)
+        set_target_properties(skred_repl PROPERTIES WIN32_EXECUTABLE FALSE)
+    endif()
+
+    message(STATUS "skred-repl: release API: ${SKRED_ROOT}")
+endif()
+
+message(STATUS "skred-repl: configured. Build with: cmake --build <builddir> -j")

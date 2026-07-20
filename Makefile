@@ -1,10 +1,13 @@
-all: repl_demo
+all: skred_repl
 
-repl_demo:
+skred_repl:
 	mkdir -p build && \
   cd build && \
   cmake .. && \
   make
+
+run: skred_repl
+	./build/skred_repl
 
 clean:
 	rm -rf build

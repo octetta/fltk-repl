@@ -41,6 +41,15 @@ typedef struct repl_ctx repl_ctx;
  */
 typedef void (*repl_cmd_fn)(int argc, char **argv, void *userdata);
 
+/*
+ * Whole-line fallback callback. It is called when the first token does not
+ * match a registered REPL command. This is useful when the window fronts an
+ * existing command language whose commands cannot be registered one by one.
+ * `line` is the original, unmodified UTF-8 input and is valid only for the
+ * duration of the callback.
+ */
+typedef void (*repl_line_fn)(const char *line, void *userdata);
+
 typedef enum {
     REPL_THEME_LIGHT = 0,
     REPL_THEME_DARK  = 1
@@ -54,8 +63,10 @@ repl_ctx *repl_create(const char *title, int width, int height);
 /* Destroy the REPL window and free all resources. */
 void repl_destroy(repl_ctx *ctx);
 
-/* Enter the FLTK event loop. Blocks until the window is closed or
- * repl_quit() is called. Returns the same value Fl::run() would. */
+/* Show the first prompt and enter the FLTK event loop. Text printed after
+ * repl_create() and before this call therefore appears above that prompt.
+ * Blocks until the window is closed or repl_quit() is called. Returns the
+ * same value Fl::run() would. */
 int repl_run(repl_ctx *ctx);
 
 /* Programmatically close the window / exit repl_run(). */
@@ -70,6 +81,9 @@ void repl_register_command(repl_ctx *ctx, const char *name,
 
 /* Remove a previously registered command, if present. */
 void repl_unregister_command(repl_ctx *ctx, const char *name);
+
+/* Set or clear (fn == NULL) the handler for otherwise unknown commands. */
+void repl_set_fallback_handler(repl_ctx *ctx, repl_line_fn fn, void *userdata);
 
 /* Registers a small set of convenience builtins:
  *   help            - lists all registered commands

@@ -26,6 +26,8 @@ struct repl_ctx {
     Fl_Double_Window *window = nullptr;
     TerminalView *term = nullptr;
     std::map<std::string, CommandEntry> commands;
+    repl_line_fn fallback_fn = nullptr;
+    void *fallback_userdata = nullptr;
     repl_theme theme = REPL_THEME_DARK;
     std::string font_name = "Courier";
     int font_size = 14;
@@ -51,6 +53,11 @@ static void dispatch_line(repl_ctx *ctx, const std::string &line) {
 
     auto it = ctx->commands.find(tokens[0]);
     if (it == ctx->commands.end()) {
+        if (ctx->fallback_fn) {
+            ctx->fallback_fn(line.c_str(), ctx->fallback_userdata);
+            ctx->term->showPrompt();
+            return;
+        }
         std::string msg = "unknown command: " + tokens[0] +
                            " (type 'help' for a list)\n";
         ctx->term->appendOutput(msg);
@@ -180,7 +187,6 @@ repl_ctx *repl_create(const char *title, int width, int height) {
 
     ctx->term->take_focus();
 
-    ctx->term->showPrompt();
     return ctx;
 }
 
@@ -192,6 +198,7 @@ void repl_destroy(repl_ctx *ctx) {
 
 int repl_run(repl_ctx *ctx) {
     if (!ctx) return -1;
+    ctx->term->showPrompt();
     return Fl::run();
 }
 
@@ -208,6 +215,12 @@ void repl_register_command(repl_ctx *ctx, const char *name, repl_cmd_fn fn, void
 void repl_unregister_command(repl_ctx *ctx, const char *name) {
     if (!ctx || !name) return;
     ctx->commands.erase(name);
+}
+
+void repl_set_fallback_handler(repl_ctx *ctx, repl_line_fn fn, void *userdata) {
+    if (!ctx) return;
+    ctx->fallback_fn = fn;
+    ctx->fallback_userdata = userdata;
 }
 
 void repl_register_default_commands(repl_ctx *ctx) {
