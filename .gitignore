@@ -1,0 +1,12 @@
+build/
+build-*/
+cmake-build-*/
+*.o
+*.obj
+*.exe
+*.dSYM/
+.DS_Store
+
+# If a user manually vendors FLTK under third_party/fltk, don't
+# accidentally commit it to this repo.
+/third_party/fltk/
