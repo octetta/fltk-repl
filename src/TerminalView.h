@@ -54,6 +54,10 @@ public:
     // reach it; not part of the library's supported API.
     void onBufferModifiedTrampolineImpl(int pos, int nInserted, int nDeleted);
 
+    void zoomIn(int delta = 1);
+    void zoomOut(int delta = 1);
+    void updateFontSize(int new_size);
+
 private:
     Fl_Text_Buffer *buffer_;
     Fl_Text_Buffer *style_;

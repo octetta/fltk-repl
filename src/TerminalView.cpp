@@ -62,8 +62,6 @@ void TerminalView::rebuildStyleTable() {
     bool isDarkBg = ((0.299 * r + 0.587 * g + 0.114 * b) < 128);
 
     // Style 'A': Muted/slate contrast for output so live input ('C') stands out cleanly
-    // Dark mode: Softened grayish-blue (0xA0AAB0)
-    // Light mode: Dark slate gray (0x4A5568)
     uint32_t outputColor = isDarkBg ? 0xA0AAB0 : 0x4A5568;
 
     static Fl_Text_Display::Style_Table_Entry table[3];
@@ -101,6 +99,31 @@ void TerminalView::setFont(Fl_Font font, int size) {
     font_ = font;
     font_size_ = size;
     rebuildStyleTable();
+}
+
+void TerminalView::updateFontSize(int new_size) {
+    if (new_size < 6 || new_size > 72) return; // Guard against extreme font sizes
+    font_size_ = new_size;
+    
+    // 1. Rebuild style table entries with new font size
+    rebuildStyleTable();
+
+    // 2. Force FLTK to recalculate line heights and character wrapping metrics
+    wrap_mode(Fl_Text_Display::WRAP_AT_BOUNDS, 0);
+
+    // 3. Force full redraw of current buffer bounds
+    if (buffer_) {
+        redisplay_range(0, buffer_->length());
+    }
+    redraw();
+}
+
+void TerminalView::zoomIn(int delta) {
+    updateFontSize(font_size_ + delta);
+}
+
+void TerminalView::zoomOut(int delta) {
+    updateFontSize(font_size_ - delta);
 }
 
 void TerminalView::appendStyled(const std::string &utf8, char styleChar) {
@@ -219,9 +242,24 @@ int TerminalView::handle(int event) {
     if (event == FL_KEYBOARD) {
         int key = Fl::event_key();
         int state = Fl::event_state();
+        bool mod = (state & (FL_CTRL | FL_COMMAND)) != 0;
+
+        // Dynamic Zoom Controls: Ctrl/Cmd + '=', '+', '-', or '0'
+        if (mod) {
+            if (key == '=' || key == '+') {
+                zoomIn(1);
+                return 1;
+            } else if (key == '-') {
+                zoomOut(1);
+                return 1;
+            } else if (key == '0') {
+                updateFontSize(14); // Reset to standard 14pt
+                return 1;
+            }
+        }
 
         // Handle Ctrl+C / Cmd+C: Copy text, clear selection, and snap cursor back to prompt
-        if ((state & (FL_CTRL | FL_COMMAND)) && (key == 'c' || key == 'C')) {
+        if (mod && (key == 'c' || key == 'C')) {
             if (buffer_->selected()) {
                 char* text = buffer_->selection_text();
                 if (text) {
@@ -238,21 +276,21 @@ int TerminalView::handle(int event) {
         }
 
         // Ctrl+A or Home: Jump to start of prompt input
-        if (key == FL_Home || ((state & (FL_CTRL | FL_COMMAND)) && (key == 'a' || key == 'A'))) {
+        if (key == FL_Home || (mod && (key == 'a' || key == 'A'))) {
             insert_position(input_start_);
             show_insert_position();
             return 1;
         }
 
         // Ctrl+E or End: Jump to end of prompt input
-        if (key == FL_End || ((state & (FL_CTRL | FL_COMMAND)) && (key == 'e' || key == 'E'))) {
+        if (key == FL_End || (mod && (key == 'e' || key == 'E'))) {
             insert_position(buffer_->length());
             show_insert_position();
             return 1;
         }
 
         // Unix line discard (Ctrl+U): Delete from cursor back to prompt start
-        if ((state & (FL_CTRL | FL_COMMAND)) && (key == 'u' || key == 'U')) {
+        if (mod && (key == 'u' || key == 'U')) {
             int cur = insert_position();
             if (cur > input_start_) {
                 buffer_->remove(input_start_, cur);
@@ -263,7 +301,7 @@ int TerminalView::handle(int event) {
         }
 
         // Kill forward (Ctrl+K): Delete from cursor to end of input line
-        if ((state & (FL_CTRL | FL_COMMAND)) && (key == 'k' || key == 'K')) {
+        if (mod && (key == 'k' || key == 'K')) {
             int cur = insert_position();
             int end = buffer_->length();
             if (cur >= input_start_ && cur < end) {
@@ -273,7 +311,7 @@ int TerminalView::handle(int event) {
         }
 
         // Backward kill word (Ctrl+W): Delete word before cursor
-        if ((state & (FL_CTRL | FL_COMMAND)) && (key == 'w' || key == 'W')) {
+        if (mod && (key == 'w' || key == 'W')) {
             int cur = insert_position();
             if (cur > input_start_) {
                 int pos = cur;

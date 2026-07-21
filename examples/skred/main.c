@@ -7,7 +7,7 @@
  */
 #include "repl/repl_api.h"
 #include "repl/bitmap_win.h"
-#include "repl/panel_win.h"
+#include "repl/panel_dsl.h"
 #include <skred/api.h>
 
 #include <stdio.h>
@@ -79,6 +79,11 @@ static void gui_help(int argc, char **argv, void *userdata) {
         "\n"
         "Every other line is sent unchanged to Skred. Use Skred/Skode\n"
         "command syntax exactly as you would in mini-skred.");
+}
+
+static void panel_to_skred(const char *line, void *user_data) {
+    (void)user_data;
+    skred_command(line);
 }
 
 int main(int argc, char **argv) {
@@ -163,6 +168,7 @@ int main(int argc, char **argv) {
     repl_register_default_commands(app.repl);
     repl_register_command(app.repl, "help", gui_help, &app);
     repl_set_fallback_handler(app.repl, skred_line, &app);
+    //panel_set_command_handler(panel_to_skred, NULL);
 
     repl_printf(app.repl, "Skred %s\n%s\n", skred_version(), skred_features());
     repl_printf(app.repl, "frames/callback %u; voices %u; UDP port %d\n",
