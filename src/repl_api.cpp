@@ -196,6 +196,7 @@ repl_ctx *repl_create(const char *title, int width, int height) {
 
     ctx->term = new TerminalView(0, 0, width, height);
     ctx->term->textfont(FL_COURIER);
+    ctx->term->selection_color(fl_rgb_color(60, 120, 180)); // High-contrast blue highlight
     ctx->term->setColors(repl_theme_defaults(true));
     ctx->term->setLineHandler([ctx](const std::string &line) {
         dispatch_line(ctx, line);
@@ -222,20 +223,19 @@ static TerminalView* g_active_term = nullptr;
 static int repl_copy_handler(int event) {
     if (event == FL_KEYBOARD) {
         // Intercept Ctrl+C (Linux/Win) or Cmd+C (macOS)
-        if ((Fl::event_state() & (FL_CTRL | FL_COMMAND)) && Fl::event_key() == 'c') {
+        if ((Fl::event_state() & (FL_CTRL | FL_COMMAND)) && (Fl::event_key() == 'c' || Fl::event_key() == 'C')) {
             if (g_active_term) {
-                // Cast TerminalView to Fl_Text_Display to access the buffer
                 Fl_Text_Display* disp = static_cast<Fl_Text_Display*>(g_active_term);
                 if (disp && disp->buffer()) {
                     Fl_Text_Buffer* buf = disp->buffer();
                     
-                    // If text is highlighted, copy directly to CLIPBOARD (1)
                     if (buf->selected()) {
                         char* text = buf->selection_text();
                         if (text) {
-                            Fl::copy(text, (int)strlen(text), 1); // 1 = System Clipboard
+                            Fl::copy(text, (int)strlen(text), 1); // 1 = Clipboard
+                            Fl::copy(text, (int)strlen(text), 0); // 0 = Primary selection (X11)
                             free(text);
-                            return 1; // Event consumed
+                            return 1; // Event consumed successfully
                         }
                     }
                 }
@@ -352,6 +352,14 @@ void repl_set_theme(repl_ctx *ctx, repl_theme theme) {
     ctx->theme = theme;
     repl_apply_global_scheme(theme == REPL_THEME_DARK);
     ctx->term->setColors(repl_theme_defaults(theme == REPL_THEME_DARK));
+    
+    // Adjust selection highlight dynamic to theme
+    if (theme == REPL_THEME_DARK) {
+        ctx->term->selection_color(fl_rgb_color(60, 120, 180));
+    } else {
+        ctx->term->selection_color(fl_rgb_color(180, 210, 240));
+    }
+    
     ctx->window->redraw();
 }
 
