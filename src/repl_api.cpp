@@ -10,6 +10,8 @@
 
 #include <FL/fl_draw.H>   // add near the other FL/ includes, for fl_font/fl_width
 
+#include <FL/Fl_Text_Display.H>
+
 #include <cctype>
 #include <cstdarg>
 #include <cstdio>
@@ -214,8 +216,42 @@ void repl_destroy(repl_ctx *ctx) {
     delete ctx;
 }
 
+// Global pointer to active terminal view
+static TerminalView* g_active_term = nullptr;
+
+static int repl_copy_handler(int event) {
+    if (event == FL_KEYBOARD) {
+        // Intercept Ctrl+C (Linux/Win) or Cmd+C (macOS)
+        if ((Fl::event_state() & (FL_CTRL | FL_COMMAND)) && Fl::event_key() == 'c') {
+            if (g_active_term) {
+                // Cast TerminalView to Fl_Text_Display to access the buffer
+                Fl_Text_Display* disp = static_cast<Fl_Text_Display*>(g_active_term);
+                if (disp && disp->buffer()) {
+                    Fl_Text_Buffer* buf = disp->buffer();
+                    
+                    // If text is highlighted, copy directly to CLIPBOARD (1)
+                    if (buf->selected()) {
+                        char* text = buf->selection_text();
+                        if (text) {
+                            Fl::copy(text, (int)strlen(text), 1); // 1 = System Clipboard
+                            free(text);
+                            return 1; // Event consumed
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return 0; // Pass through all other events
+}
+
 int repl_run(repl_ctx *ctx) {
     if (!ctx) return -1;
+
+    // Assign active terminal view and register Ctrl+C clipboard handler
+    g_active_term = ctx->term;
+    Fl::add_handler(repl_copy_handler);
+
     ctx->term->showPrompt();
     return Fl::run();
 }
