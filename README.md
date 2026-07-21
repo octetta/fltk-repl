@@ -5,6 +5,9 @@ The application links to the packaged Skred/PULP release API rather than a
 PULP build tree. Input that is not a GUI command is forwarded as a complete,
 unchanged line to `skred_command()`.
 
+The repository version is stored in `VERSION` and printed before the linked
+Skred version at startup and by `./build/skred_repl --check`.
+
 The terminal supports scrollback, command history, selection and clipboard
 operations, light and dark themes, configurable fonts, and native FLTK
 behavior on Linux, macOS, and Windows. The library also includes a bitmap
@@ -31,11 +34,11 @@ make clean    # remove build/
 ```
 
 CMake downloads the selected maxed Skred release from the PULP GitHub
-releases into `vendor/`. Version 0.51.0 is the default; select another
+releases into `vendor/`. Version 0.52.0 is the default; select another
 published version at configure time with:
 
 ```sh
-cmake -S . -B build -DSKRED_VERSION=0.51.0
+cmake -S . -B build -DSKRED_VERSION=0.52.0
 ```
 
 The current CMake implementation derives the package location from
@@ -118,9 +121,41 @@ A right-click menu provides Copy, Paste, and Clear Line.
 ## Bitmap and panel windows
 
 `bitmap` controls the default graphics window. Image producers use the public
-`bitmap_win_set_rgb()` or `bitmap_win_set_gray()` C APIs; until an image is
-provided, showing the window displays an empty canvas. The current registry
-uses one shared bitmap window even when callers request different names.
+`bitmap_win_set_rgb()`, `bitmap_win_set_gray()`, or
+`bitmap_win_set_spectrogram()` C APIs. The spectrogram input is interleaved
+floating-point audio and may select one channel or downmix all channels. Until
+an image is provided, showing the window displays an empty canvas. Named
+producers use separate windows, so waveform and spectrogram views can remain
+visible together.
+
+Skred 0.52.0 supplies parser data to host foreign-function callbacks. The REPL
+uses reserved slot `/ff9` to copy that data and marshal rendering onto FLTK's
+main thread. Display a wavetable or the completed temporary record buffer with:
+
+```text
+spectrogram wave 300
+spectrogram record
+spectrogram record 0
+```
+
+Record channel `-1` (the default) downmixes stereo; `0` and `1` select the
+left or right channel. Both sources preserve their stored amplitudes, and the
+record command respects its current start offset and end trim. Spectrograms
+embed the source title and axis cues using an Atari-vector-inspired stroke
+font, so labels remain crisp without a platform font dependency.
+
+Use the same sources for a conventional x/y waveform plot:
+
+```text
+waveform wave 300
+waveform record
+waveform record 1
+```
+
+Waveform labels sit outside the plot and report the frame count and stored
+amplitude range. The renderer accepts loop start/end frame markers, but Skred
+0.52.0 does not yet include wavetable loop metadata in foreign-function calls,
+so REPL-sourced plots currently leave those markers unset.
 
 Load the included panel example from the repository root with:
 

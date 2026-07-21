@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
-project(fltk_repl LANGUAGES C CXX)
+
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" FLTK_REPL_VERSION
+     LIMIT_COUNT 1)
+if(NOT FLTK_REPL_VERSION MATCHES "^[0-9]+\.[0-9]+\.[0-9]+$")
+    message(FATAL_ERROR "VERSION must contain a semantic version (found '${FLTK_REPL_VERSION}')")
+endif()
+project(fltk_repl VERSION ${FLTK_REPL_VERSION} LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,7 +38,8 @@ message(STATUS "fltk-repl: FLTK ${FLTK_VERSION} with SVG support")
 add_library(replfltk STATIC
     src/repl_api.cpp src/TerminalView.cpp src/TerminalView.h
     src/Theme.cpp src/Theme.h
-    src/Tokenize.cpp src/Tokenize.h
+    src/Tokenize.cpp src/Tokenize.h src/VectorFont.cpp src/VectorFont.h
+    src/Spectrogram.cpp src/Spectrogram.h src/Waveform.cpp src/Waveform.h
     src/bitmap_win.cpp src/panel_dsl.cpp
     include/repl/bitmap_win.h include/repl/panel_dsl.h
 )
@@ -49,21 +56,20 @@ endif()
 # ---------------------------------------------------------------------
 if(WIN32)
     set(_skred_platform "windows-x86_64")
+    set(_skred_archive_extension "zip")
 elseif(APPLE)
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
-        set(_skred_platform "macos-arm64")
-    else()
-        set(_skred_platform "macos-x86_64")
-    endif()
+    set(_skred_platform "macos-universal")
+    set(_skred_archive_extension "tar.gz")
 else()
     set(_skred_platform "linux-x86_64")
+    set(_skred_archive_extension "tar.gz")
 endif()
 
 # ---------------------------------------------------------------------
 # Download Skred release into vendor/
 # ---------------------------------------------------------------------
 option(SKRED_BUILD_REPL "Build Skred REPL" ON)
-set(SKRED_VERSION "0.51.0" CACHE STRING "Skred version to use")
+set(SKRED_VERSION "0.52.0" CACHE STRING "Skred version to use")
 set(SKRED_ROOT "" CACHE PATH "Path to skred package (auto-filled)")
 
 set(VENDOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor")
@@ -74,10 +80,11 @@ if(SKRED_BUILD_REPL)
         message(STATUS "Downloading Skred ${SKRED_VERSION} for ${_skred_platform}...")
 
         file(MAKE_DIRECTORY "${VENDOR_DIR}")
-        set(_url "https://github.com/octetta/pulp/releases/download/v${SKRED_VERSION}/skred-${SKRED_VERSION}-maxed-${_skred_platform}.tar.gz")
+        set(_archive "skred-${SKRED_VERSION}-maxed-${_skred_platform}.${_skred_archive_extension}")
+        set(_url "https://github.com/octetta/pulp/releases/download/v${SKRED_VERSION}/${_archive}")
 
         execute_process(
-            COMMAND curl -L -o skred.tar.gz "${_url}"
+            COMMAND curl -fL -o "${_archive}" "${_url}"
             WORKING_DIRECTORY "${VENDOR_DIR}"
             RESULT_VARIABLE DOWNLOAD_RESULT
         )
@@ -86,8 +93,15 @@ if(SKRED_BUILD_REPL)
             message(FATAL_ERROR "Failed to download Skred from ${_url}\nCheck the release page: https://github.com/octetta/pulp/releases")
         endif()
 
-        execute_process(COMMAND tar -xzf skred.tar.gz WORKING_DIRECTORY "${VENDOR_DIR}")
-        file(REMOVE "${VENDOR_DIR}/skred.tar.gz")
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} -E tar xf "${_archive}"
+            WORKING_DIRECTORY "${VENDOR_DIR}"
+            RESULT_VARIABLE EXTRACT_RESULT
+        )
+        file(REMOVE "${VENDOR_DIR}/${_archive}")
+        if(NOT EXTRACT_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to extract ${_archive}")
+        endif()
     endif()
 
     set(SKRED_ROOT "${SKRED_DIR}")
@@ -100,8 +114,14 @@ if(SKRED_BUILD_REPL)
         message(FATAL_ERROR "Downloaded Skred is incomplete")
     endif()
 
-    add_executable(skred_repl examples/skred/main.c)
+    add_executable(skred_repl
+        examples/skred/main.c
+        examples/skred/SpectrogramBridge.cpp
+        examples/skred/SpectrogramBridge.h
+    )
     target_include_directories(skred_repl PRIVATE ${SKRED_INCLUDE_DIR})
+    target_compile_definitions(skred_repl PRIVATE
+        FLTK_REPL_VERSION="${PROJECT_VERSION}")
     target_link_libraries(skred_repl PRIVATE replfltk ${SKRED_API_LIBRARY})
     set_target_properties(skred_repl PROPERTIES
         LINKER_LANGUAGE CXX
@@ -118,6 +138,16 @@ if(BUILD_TESTING)
     add_executable(repl_svg_smoke tests/svg_smoke.cpp)
     target_link_libraries(repl_svg_smoke PRIVATE replfltk)
     add_test(NAME repl_svg_smoke COMMAND repl_svg_smoke)
+
+    add_executable(repl_spectrogram_test tests/spectrogram_test.cpp)
+    target_include_directories(repl_spectrogram_test PRIVATE src)
+    target_link_libraries(repl_spectrogram_test PRIVATE replfltk)
+    add_test(NAME repl_spectrogram_test COMMAND repl_spectrogram_test)
+
+    add_executable(repl_waveform_test tests/waveform_test.cpp)
+    target_include_directories(repl_waveform_test PRIVATE src)
+    target_link_libraries(repl_waveform_test PRIVATE replfltk)
+    add_test(NAME repl_waveform_test COMMAND repl_waveform_test)
 endif()
 
 message(STATUS "fltk-repl configured successfully!")

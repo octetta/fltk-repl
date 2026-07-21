@@ -1,4 +1,6 @@
 #include "bitmap_win.h"
+#include "Spectrogram.h"
+#include "Waveform.h"
 
 #include <FL/Fl.H>
 #include <FL/Fl_Double_Window.H>
@@ -6,6 +8,7 @@
 #include <FL/Fl_RGB_Image.H>
 #include <FL/fl_draw.H>
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -134,6 +137,7 @@ void close_cb(Fl_Widget *w, void *) {
 } // namespace
 
 struct bitmap_win {
+    std::string key;
     std::string name;
     Fl_Double_Window *win;
     BitmapView *view;
@@ -150,20 +154,13 @@ static std::vector<bitmap_win_t *> g_registry;
 
 static bitmap_win_t *find_or_create(const char *name) {
     std::string key = name ? name : "bitmap";
-
-    /* For now, collapse every name to a single shared window. Flip this to
-     * a real per-name lookup by uncommenting the loop below and removing
-     * the early-return-first-entry shortcut. */
-    if (!g_registry.empty()) return g_registry.front();
-
-    /*
     for (auto *bw : g_registry) {
-        if (bw->name == key) return bw;
+        if (bw->key == key) return bw;
     }
-    */
 
     const int default_w = 512, default_h = 384;
     bitmap_win_t *bw = new bitmap_win();
+    bw->key = key;
     bw->name = key;
     bw->win = new Fl_Double_Window(default_w, default_h, key.c_str());
     bw->view = new BitmapView(0, 0, default_w, default_h);
@@ -191,6 +188,12 @@ void bitmap_win_hide(bitmap_win_t *bw) {
     bw->win->hide();
 }
 
+void bitmap_win_hide_all(void) {
+    for (auto *bw : g_registry) {
+        if (bw && bw->win) bw->win->hide();
+    }
+}
+
 int bitmap_win_visible(const bitmap_win_t *bw) {
     return bw && bw->win->visible() ? 1 : 0;
 }
@@ -203,6 +206,57 @@ void bitmap_win_set_rgb(bitmap_win_t *bw, const uint8_t *rgb, int w, int h) {
 void bitmap_win_set_gray(bitmap_win_t *bw, const uint8_t *gray, int w, int h) {
     if (!bw) return;
     bw->view->set_gray(gray, w, h);
+}
+
+int bitmap_win_set_spectrogram(bitmap_win_t *bw, const float *samples,
+                               int frames, int channels, int channel,
+                               int width, int height) {
+    if (!bw) return -1;
+    std::vector<uint8_t> rgb;
+    if (!repl_render_spectrogram_rgb(samples, frames, channels, channel,
+                                     width, height, rgb)) return -1;
+    bw->view->set_rgb(rgb.data(), width, height);
+    return 0;
+}
+
+int bitmap_win_set_spectrogram_labeled(bitmap_win_t *bw, const float *samples,
+                                       int frames, int channels, int channel,
+                                       int width, int height,
+                                       const char *title) {
+    if (!bw) return -1;
+    if (width < 240 || height < 120) {
+        return bitmap_win_set_spectrogram(bw, samples, frames, channels,
+                                          channel, width, height);
+    }
+    const int bandHeight = std::clamp(height / 11, 24, 38);
+    const int plotHeight = height - bandHeight * 2;
+    std::vector<uint8_t> plot;
+    std::vector<uint8_t> rgb(static_cast<size_t>(width) * height * 3, 0);
+    if (!repl_render_spectrogram_rgb(samples, frames, channels, channel,
+                                     width, plotHeight, plot)) {
+        return -1;
+    }
+    for (int y = 0; y < plotHeight; ++y) {
+        std::memcpy(&rgb[(static_cast<size_t>(y + bandHeight) * width) * 3],
+                    &plot[(static_cast<size_t>(y) * width) * 3],
+                    static_cast<size_t>(width) * 3);
+    }
+    repl_annotate_spectrogram_rgb(rgb, width, height, title);
+    bw->view->set_rgb(rgb.data(), width, height);
+    return 0;
+}
+
+int bitmap_win_set_waveform(bitmap_win_t *bw, const float *samples,
+                            int frames, int channels, int channel,
+                            int width, int height, const char *title,
+                            int loop_start, int loop_end) {
+    if (!bw) return -1;
+    std::vector<uint8_t> rgb;
+    if (!repl_render_waveform_rgb(samples, frames, channels, channel,
+                                  width, height, title, loop_start, loop_end,
+                                  rgb)) return -1;
+    bw->view->set_rgb(rgb.data(), width, height);
+    return 0;
 }
 
 void bitmap_win_clear(bitmap_win_t *bw) {

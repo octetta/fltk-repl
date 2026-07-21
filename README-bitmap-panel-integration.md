@@ -236,10 +236,8 @@ your build:
   Making rows also grow/shrink vertically is a real design decision
   (proportional scaling? extra space to the last row?) left for you to
   decide rather than guessed at.
-- **`bitmap_win` is a single shared window today.** `bitmap_win_get(name)`
-  accepts a name and is written so per-name windows can be added later
-  without touching call sites, but right now every name aliases to one
-  window.
+- **`bitmap_win` keeps one window per name.** `bitmap_win_get(name)` returns
+  the existing named window or creates it on first use.
 - **Last column in a row absorbs rounding remainder.** Fine for 2–3
   column rows; with 5+ columns the last one may look slightly uneven
   width-wise.

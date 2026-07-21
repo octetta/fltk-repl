@@ -8,9 +8,9 @@ Core C++17 implementation files live in `src/`; public, C-compatible headers are
 
 - `make` configures a Release build and compiles `build/skred_repl`.
 - `make run` rebuilds and launches the FLTK application.
-- `cmake -S . -B build -DSKRED_VERSION=0.51.0` selects a packaged Skred release version.
+- `cmake -S . -B build -DSKRED_VERSION=0.52.0` selects a packaged Skred release version.
 - `cmake --build build -j` performs an incremental parallel build.
-- `ctest --test-dir build --output-on-failure` runs the headless SVG smoke test.
+- `ctest --test-dir build --output-on-failure` runs headless SVG, spectrogram, and waveform tests.
 - `./build/skred_repl --check` verifies the linked release without opening a window or starting audio.
 - `make info` prints relevant cached CMake configuration; `make clean` removes the build directory.
 
@@ -22,7 +22,7 @@ Match nearby code: four-space indentation, braces on the same line, and focused 
 
 ## Testing Guidelines
 
-There is no coverage threshold. Every change should complete a clean build, pass CTest, and pass `./build/skred_repl --check`. The `tests/svg_smoke.cpp` test validates in-memory SVG parsing without opening a window. For terminal, bitmap, panel, theme, font, history, or clipboard changes, also run `make run` and manually exercise the affected interaction. Add tests under `tests/` and register them with CTest.
+There is no coverage threshold. Every change should complete a clean build, pass CTest, and pass `./build/skred_repl --check`. Tests cover headless in-memory SVG parsing plus float-audio spectrogram and waveform rendering. For terminal, bitmap, panel, theme, font, history, or clipboard changes, also run `make run` and manually exercise the affected interaction. Add tests under `tests/` and register them with CTest.
 
 ## Commit & Pull Request Guidelines
 

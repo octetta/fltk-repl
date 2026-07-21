@@ -6,10 +6,7 @@
  *
  * Usage from a command handler:
  *
- *   bitmap_win_t *bw = bitmap_win_get("scope");   // name is a label/key;
- *                                                  // today all names alias
- *                                                  // to one window, but the
- *                                                  // call site never changes
+ *   bitmap_win_t *bw = bitmap_win_get("scope");   // name is the window key
  *   bitmap_win_set_gray(bw, buf, w, h);
  *   bitmap_win_show(bw);
  *
@@ -29,21 +26,30 @@ extern "C" {
 
 typedef struct bitmap_win bitmap_win_t;
 
-/* Get (creating on first use) the bitmap window registered under `name`.
- * Right now this always returns the single default window regardless of
- * `name`, except that `name` is used as the window title. Call sites should
- * still pass a meaningful name (e.g. "scope", "spectrogram") so that when a
- * real per-name registry is added later, no call site needs to change. */
+/* Get or create the bitmap window registered under `name`. */
 bitmap_win_t *bitmap_win_get(const char *name);
 
 void bitmap_win_show(bitmap_win_t *bw);
 void bitmap_win_hide(bitmap_win_t *bw);
+void bitmap_win_hide_all(void);
 int  bitmap_win_visible(const bitmap_win_t *bw);
 
 /* Replace the displayed image. Data is copied internally, so the caller's
  * buffer can be reused/freed immediately after the call returns. */
 void bitmap_win_set_rgb(bitmap_win_t *bw, const uint8_t *rgb, int w, int h);
 void bitmap_win_set_gray(bitmap_win_t *bw, const uint8_t *gray, int w, int h);
+
+int bitmap_win_set_spectrogram(bitmap_win_t *bw, const float *samples,
+                               int frames, int channels, int channel,
+                               int width, int height);
+int bitmap_win_set_spectrogram_labeled(bitmap_win_t *bw, const float *samples,
+                                       int frames, int channels, int channel,
+                                       int width, int height,
+                                       const char *title);
+int bitmap_win_set_waveform(bitmap_win_t *bw, const float *samples,
+                            int frames, int channels, int channel,
+                            int width, int height, const char *title,
+                            int loop_start, int loop_end);
 
 void bitmap_win_clear(bitmap_win_t *bw);
 void bitmap_win_set_title(bitmap_win_t *bw, const char *title);

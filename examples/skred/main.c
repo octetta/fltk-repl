@@ -8,11 +8,16 @@
 #include "repl/repl_api.h"
 #include "repl/bitmap_win.h"
 #include "repl/panel_dsl.h"
+#include "SpectrogramBridge.h"
 #include <skred/api.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef FLTK_REPL_VERSION
+#define FLTK_REPL_VERSION "unknown"
+#endif
 
 typedef struct app_state {
     repl_ctx *repl;
@@ -52,12 +57,16 @@ static int parse_int(const char *option, const char *text, int *out) {
     return 1;
 }
 
+static void print_skred_log(app_state *app) {
+    char *log = skred_log();
+    if (log && *log) repl_print(app->repl, log);
+}
+
 static void skred_line(const char *line, void *userdata) {
     app_state *app = (app_state *)userdata;
     size_t length = strlen(line);
     char *command = (char *)malloc(length + 1);
     int result;
-    char *log;
 
     if (!command) {
         repl_println(app->repl, "skred-repl: out of memory");
@@ -67,8 +76,7 @@ static void skred_line(const char *line, void *userdata) {
     result = skred_command(command);
     free(command);
 
-    log = skred_log();
-    if (log && *log) repl_print(app->repl, log);
+    print_skred_log(app);
     if (result > 0) repl_printf(app->repl, "r = %d\n", result);
     if (result < 0) repl_quit(app->repl);
 }
@@ -84,6 +92,68 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
         if (n >= 2 && strcmp(arg, "hide") == 0) { bitmap_win_hide(bw); return; }
         if (n >= 2 && strcmp(arg, "clear") == 0) { bitmap_win_clear(bw); return; }
         bitmap_win_show(bw);
+        return;
+    }
+
+    if (strcmp(cmd, "spectrogram") == 0) {
+        int value;
+        char extra;
+        if (n >= 2 && sscanf(arg, "wave %d %c", &value, &extra) == 1 &&
+            value >= 0) {
+            int result = skred_spectrogram_wave(value);
+            print_skred_log(app);
+            if (result != 0)
+                repl_println(app->repl, "No wavetable data available.");
+            return;
+        }
+        if (n >= 2 && strcmp(arg, "record") == 0) {
+            int result = skred_spectrogram_record(-1);
+            print_skred_log(app);
+            if (result != 0)
+                repl_println(app->repl, "No completed recording data available.");
+            return;
+        }
+        if (n >= 2 && sscanf(arg, "record %d %c", &value, &extra) == 1 &&
+            value >= -1 && value <= 1) {
+            int result = skred_spectrogram_record(value);
+            print_skred_log(app);
+            if (result != 0)
+                repl_println(app->repl, "No completed recording data available.");
+            return;
+        }
+        repl_println(app->repl,
+            "usage: spectrogram wave <slot> | record [-1|0|1]");
+        return;
+    }
+
+    if (strcmp(cmd, "waveform") == 0) {
+        int value;
+        char extra;
+        if (n >= 2 && sscanf(arg, "wave %d %c", &value, &extra) == 1 &&
+            value >= 0) {
+            int result = skred_waveform_wave(value);
+            print_skred_log(app);
+            if (result != 0)
+                repl_println(app->repl, "No wavetable data available.");
+            return;
+        }
+        if (n >= 2 && strcmp(arg, "record") == 0) {
+            int result = skred_waveform_record(-1);
+            print_skred_log(app);
+            if (result != 0)
+                repl_println(app->repl, "No completed recording data available.");
+            return;
+        }
+        if (n >= 2 && sscanf(arg, "record %d %c", &value, &extra) == 1 &&
+            value >= -1 && value <= 1) {
+            int result = skred_waveform_record(value);
+            print_skred_log(app);
+            if (result != 0)
+                repl_println(app->repl, "No completed recording data available.");
+            return;
+        }
+        repl_println(app->repl,
+            "usage: waveform wave <slot> | record [-1|0|1]");
         return;
     }
 
@@ -171,11 +241,22 @@ static void gui_help(int argc, char **argv, void *userdata) {
         "  theme light|dark         change colors\n"
         "  font \"name\" [size]       change terminal font\n"
         "  bitmap [show|hide|clear] graphics output window\n"
+        "  spectrogram wave <slot> | record [-1|0|1]\n"
+        "  waveform wave <slot> | record [-1|0|1]\n"
         "  panel load <file.pnl> | reload | hide\n"
         "  boot [voices N] [frames N] [port N]   restart Skred\n"
         "  quit / exit              stop everything\n"
         "\n"
         "Every other line is sent to Skred.");
+}
+
+static void cmd_quit(int argc, char **argv, void *userdata) {
+    app_state *app = (app_state *)userdata;
+    (void)argc;
+    (void)argv;
+    skred_spectrogram_unbind();
+    bitmap_win_hide_all();
+    repl_quit(app->repl);
 }
 
 static void panel_to_skred(const char *line, void *user_data) {
@@ -245,6 +326,7 @@ int main(int argc, char **argv) {
     }
 
     if (check_only) {
+        printf("fltk-repl %s\n", FLTK_REPL_VERSION);
         printf("Skred %s\n%s\n", skred_version(), skred_features());
         return 0;
     }
@@ -264,11 +346,14 @@ int main(int argc, char **argv) {
 
     repl_set_prompt(app.repl, "# ");
     repl_register_default_commands(app.repl);
+    repl_register_command(app.repl, "quit", cmd_quit, &app);
+    repl_register_command(app.repl, "exit", cmd_quit, &app);
     repl_register_command(app.repl, "help", gui_help, &app);
     repl_register_command(app.repl, "boot", cmd_boot, &app);
     repl_set_fallback_handler(app.repl, bitmap_panel_handler, &app);
     panel_set_command_handler(panel_to_skred, NULL);
 
+    repl_printf(app.repl, "fltk-repl %s\n", FLTK_REPL_VERSION);
     repl_printf(app.repl, "Skred %s\n%s\n", skred_version(), skred_features());
     repl_printf(app.repl, "frames/callback %u; voices %u; UDP port %d\n",
                 frames, voices, port);
@@ -282,12 +367,17 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    if (skred_spectrogram_bind() != 0) {
+        repl_println(app.repl, "Could not bind the spectrogram data bridge.");
+    }
+
     skred_logger(1);
     repl_println(app.repl,
         "Ready. Type 'help' for commands.\n"
         "Example: boot voices 48 frames 256");
 
     i = repl_run(app.repl);
+    skred_spectrogram_unbind();
     skred_control_dispatch_stop();
     skred_stop();
     repl_destroy(app.repl);
