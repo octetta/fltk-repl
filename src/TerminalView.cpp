@@ -120,11 +120,10 @@ void TerminalView::replaceLiveText(const std::string &s) {
 }
 
 void TerminalView::snapCursorToEndIfBeforeInput() {
+    // Only snap cursor and unselect if we are NOT making/holding a text selection
     int selStart = 0, selEnd = 0;
     if (buffer_->selection_position(&selStart, &selEnd)) {
-        if (selStart < input_start_) {
-            buffer_->unselect();
-        }
+        return; // Preserve active highlight selection!
     }
     if (insert_position() < input_start_) {
         insert_position(buffer_->length());
@@ -158,6 +157,23 @@ void TerminalView::moveHistory(int direction) {
 int TerminalView::handle(int event) {
     if (event == FL_KEYBOARD) {
         int key = Fl::event_key();
+
+        // Handle Ctrl+C / Cmd+C: Copy text, clear selection, and snap cursor back to prompt
+        if ((Fl::event_state() & (FL_CTRL | FL_COMMAND)) && (key == 'c' || key == 'C')) {
+            if (buffer_->selected()) {
+                char* text = buffer_->selection_text();
+                if (text) {
+                    Fl::copy(text, (int)strlen(text), 1); // System Clipboard
+                    Fl::copy(text, (int)strlen(text), 0); // Primary Selection
+                    free(text);
+                }
+                buffer_->unselect();
+            }
+            insert_position(buffer_->length());
+            show_insert_position();
+            redraw();
+            return 1;
+        }
 
         if (key == FL_Enter || key == FL_KP_Enter) {
             std::string line = liveText();
