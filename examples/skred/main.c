@@ -6,6 +6,8 @@
  * skred_command().
  */
 #include "repl/repl_api.h"
+#include "repl/bitmap_win.h"
+#include "repl/panel_win.h"
 #include <skred/api.h>
 
 #include <stdio.h>

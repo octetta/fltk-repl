@@ -40,9 +40,9 @@ add_library(replfltk STATIC
     src/Theme.h
     src/Tokenize.cpp
     src/Tokenize.h
-    src/bitmap_win.h
+    include/repl/bitmap_win.h
     src/bitmap_win.cpp
-    src/panel_dsl.h
+    include/repl/panel_dsl.h
     src/panel_dsl.cpp
 )
 
