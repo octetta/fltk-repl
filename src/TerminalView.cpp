@@ -2,6 +2,7 @@
 #include <FL/fl_ask.H>
 #include <FL/Fl_Menu_Item.H>
 #include <cstring>
+#include <cstdint>
 #include <cctype>
 
 namespace {
@@ -54,10 +55,32 @@ TerminalView::~TerminalView() {
 }
 
 void TerminalView::rebuildStyleTable() {
+    // Calculate luminance of background color to pick high-contrast output shade
+    unsigned char r = (colors_.bg >> 16) & 0xFF;
+    unsigned char g = (colors_.bg >> 8) & 0xFF;
+    unsigned char b = colors_.bg & 0xFF;
+    bool isDarkBg = ((0.299 * r + 0.587 * g + 0.114 * b) < 128);
+
+    // Style 'A': Muted/slate contrast for output so live input ('C') stands out cleanly
+    // Dark mode: Softened grayish-blue (0xA0AAB0)
+    // Light mode: Dark slate gray (0x4A5568)
+    uint32_t outputColor = isDarkBg ? 0xA0AAB000 : 0x4A556800;
+
     static Fl_Text_Display::Style_Table_Entry table[3];
-    table[0] = { repl_rgb_to_flcolor(colors_.fg), font_, font_size_, 0 };     // 'A' output
-    table[1] = { repl_rgb_to_flcolor(colors_.prompt), font_, font_size_, 0 }; // 'B' prompt
-    table[2] = { repl_rgb_to_flcolor(colors_.input), font_, font_size_, 0 };  // 'C' input echo
+    table[0].color = repl_rgb_to_flcolor(outputColor);
+    table[0].font  = font_;
+    table[0].size  = font_size_;
+    table[0].attr  = 0;
+
+    table[1].color = repl_rgb_to_flcolor(colors_.prompt);
+    table[1].font  = font_;
+    table[1].size  = font_size_;
+    table[1].attr  = 0;
+
+    table[2].color = repl_rgb_to_flcolor(colors_.input);
+    table[2].font  = font_;
+    table[2].size  = font_size_;
+    table[2].attr  = 0;
 
     highlight_data(style_, table, 3, 'A', nullptr, nullptr);
 
