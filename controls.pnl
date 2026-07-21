@@ -1,0 +1,18 @@
+# Skred Control Panel Example
+window "Skred Controls" 420 320
+
+slider attack   0  8000 ms   "env_attack_set %d"     =1200
+slider decay    0  8000 ms   "env_decay_set %d"      =800
+slider sustain  0  100  %    "env_sustain_set %d"    =70
+slider release  0  8000 ms   "env_release_set %d"    =1500
+
+row
+  toggle hardstop           "loop_release_hard_stop %d"   =on
+  field  voices  1  64      "voice_count_set %d"          =24
+endrow
+
+choice wave  "sine saw square triangle noise"   "voice_wave_set %s"   =saw
+
+label "-- Utilities --"
+button panic      "all_notes_off"
+button reset      "system_reset"

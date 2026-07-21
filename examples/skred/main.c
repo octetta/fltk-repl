@@ -66,6 +66,58 @@ static void skred_line(const char *line, void *userdata) {
     if (result < 0) repl_quit(app->repl);
 }
 
+static void bitmap_panel_handler(const char *line, void *userdata) {
+    app_state *app = (app_state *)userdata;
+    char cmd[64] = {0}, arg[256] = {0};
+    int n = sscanf(line, "%63s %255[^\n]", cmd, arg);
+
+    if (strcmp(cmd, "bitmap") == 0) {
+        bitmap_win_t *bw = bitmap_win_get("default");
+        if (n >= 2 && strcmp(arg, "show") == 0) { bitmap_win_show(bw); return; }
+        if (n >= 2 && strcmp(arg, "hide") == 0) { bitmap_win_hide(bw); return; }
+        if (n >= 2 && strcmp(arg, "clear") == 0) { bitmap_win_clear(bw); return; }
+        bitmap_win_show(bw);  /* default action */
+        return;
+    }
+
+    if (strcmp(cmd, "panel") == 0) {
+        static panel_win_t *pw = NULL;
+        static char last_path[512] = "controls.pnl";
+
+        if (n >= 2 && strncmp(arg, "load ", 5) == 0) {
+            const char *path = arg + 5;
+            strncpy(last_path, path, sizeof(last_path)-1);
+            last_path[sizeof(last_path)-1] = '\0';
+            if (pw) panel_destroy(pw);
+            pw = panel_load_file(path);
+            if (pw) {
+                panel_show(pw);
+            } else {
+                repl_println(app->repl, "Panel load failed — check stderr for details");
+            }
+            return;
+        }
+        if (n >= 2 && strcmp(arg, "reload") == 0) {
+            if (pw) {
+                if (panel_reload_file(pw, last_path) == 0) {
+                    repl_println(app->repl, "Panel reloaded successfully.");
+                } else {
+                    repl_println(app->repl, "Panel reload failed.");
+                }
+            }
+            return;
+        }
+        if (n >= 2 && strcmp(arg, "hide") == 0) {
+            if (pw) panel_hide(pw);
+            return;
+        }
+        return;
+    }
+
+    /* Not a GUI command → forward to Skred */
+    skred_line(line, userdata);
+}
+
 static void gui_help(int argc, char **argv, void *userdata) {
     app_state *app = (app_state *)userdata;
     (void)argc;
@@ -75,15 +127,23 @@ static void gui_help(int argc, char **argv, void *userdata) {
         "  clear                 clear scrollback\n"
         "  theme light|dark      change colors\n"
         "  font \"name\" [size]    change terminal font\n"
+        "  bitmap [show|hide|clear]   graphics output window\n"
+        "  panel load <file.pnl> | reload | hide\n"
         "  quit / exit           stop Skred and close the window\n"
         "\n"
-        "Every other line is sent unchanged to Skred. Use Skred/Skode\n"
-        "command syntax exactly as you would in mini-skred.");
+        "Every other line is sent unchanged to Skred.");
 }
 
 static void panel_to_skred(const char *line, void *user_data) {
     (void)user_data;
-    skred_command(line);
+    /* skred_command expects non-const -> make a copy */
+    size_t len = strlen(line);
+    char *cmd = (char *)malloc(len + 1);
+    if (cmd) {
+        memcpy(cmd, line, len + 1);
+        skred_command(cmd);
+        free(cmd);
+    }
 }
 
 int main(int argc, char **argv) {
@@ -167,8 +227,8 @@ int main(int argc, char **argv) {
     repl_set_prompt(app.repl, "# ");
     repl_register_default_commands(app.repl);
     repl_register_command(app.repl, "help", gui_help, &app);
-    repl_set_fallback_handler(app.repl, skred_line, &app);
-    //panel_set_command_handler(panel_to_skred, NULL);
+    repl_set_fallback_handler(app.repl, bitmap_panel_handler, &app);
+    panel_set_command_handler(panel_to_skred, NULL);
 
     repl_printf(app.repl, "Skred %s\n%s\n", skred_version(), skred_features());
     repl_printf(app.repl, "frames/callback %u; voices %u; UDP port %d\n",
@@ -185,7 +245,8 @@ int main(int argc, char **argv) {
 
     skred_logger(1);
     repl_println(app.repl,
-        "Ready. Enter Skred commands directly; type help for GUI commands.");
+        "Ready. Enter Skred commands directly; type help for GUI commands.\n"
+        "Example: panel load controls.pnl   or   bitmap show");
 
     i = repl_run(app.repl);
     skred_control_dispatch_stop();
