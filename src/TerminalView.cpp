@@ -64,7 +64,7 @@ void TerminalView::rebuildStyleTable() {
     // Style 'A': Muted/slate contrast for output so live input ('C') stands out cleanly
     // Dark mode: Softened grayish-blue (0xA0AAB0)
     // Light mode: Dark slate gray (0x4A5568)
-    uint32_t outputColor = isDarkBg ? 0xA0AAB000 : 0x4A556800;
+    uint32_t outputColor = isDarkBg ? 0xA0AAB0 : 0x4A5568;
 
     static Fl_Text_Display::Style_Table_Entry table[3];
     table[0].color = repl_rgb_to_flcolor(outputColor);

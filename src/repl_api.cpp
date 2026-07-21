@@ -121,6 +121,40 @@ static Fl_Font find_font_by_name(const char *name) {
     return (Fl_Font)-1;
 }
 
+static Fl_Font find_default_terminal_font(std::string &matched_name) {
+    // Prefer monospace faces known to include terminal drawing characters,
+    // especially the Braille Patterns block used by Skred scopes. The list is
+    // ordered per platform, then falls back harmlessly on machines where none
+    // of the preferred faces is installed.
+#ifdef _WIN32
+    const char *candidates[] = {
+        "Cascadia Mono", "Cascadia Code", "Consolas", "DejaVu Sans Mono"
+    };
+#elif defined(__APPLE__)
+    const char *candidates[] = {
+        "Menlo", "SF Mono", "DejaVu Sans Mono", "Noto Sans Mono"
+    };
+#else
+    const char *candidates[] = {
+        "Adwaita Mono", "GNU Unifont", "Unifont", "DejaVu Sans Mono",
+        "Noto Sans Mono"
+    };
+#endif
+
+    for (const char *candidate : candidates) {
+        Fl_Font font = find_font_by_name(candidate);
+        if (font >= 0) {
+            int attr = 0;
+            const char *name = Fl::get_font_name(font, &attr);
+            matched_name = name ? name : candidate;
+            return font;
+        }
+    }
+
+    matched_name = "Courier";
+    return FL_COURIER;
+}
+
 static bool font_looks_monospace(Fl_Font f, int size) {
     fl_font(f, size);
     double wi = fl_width("i");
@@ -195,7 +229,8 @@ repl_ctx *repl_create(const char *title, int width, int height) {
     ctx->window->resizable(ctx->window);
 
     ctx->term = new TerminalView(0, 0, width, height);
-    ctx->term->textfont(FL_COURIER);
+    Fl_Font default_font = find_default_terminal_font(ctx->font_name);
+    ctx->term->setFont(default_font, ctx->font_size);
     ctx->term->selection_color(fl_rgb_color(60, 120, 180)); // High-contrast blue highlight
     ctx->term->setColors(repl_theme_defaults(true));
     ctx->term->setLineHandler([ctx](const std::string &line) {
@@ -253,6 +288,16 @@ int repl_run(repl_ctx *ctx) {
     Fl::add_handler(repl_copy_handler);
 
     ctx->term->showPrompt();
+
+    // The initial prompt is added before the event loop has laid out the text
+    // display. Reassert focus/cursor on the first loop iteration so FLTK can
+    // calculate and paint the caret at an otherwise empty input position.
+    Fl::add_timeout(0.0, [](void *userdata) {
+        TerminalView *term = static_cast<TerminalView *>(userdata);
+        term->take_focus();
+        term->show_cursor(1);
+        term->redraw();
+    }, ctx->term);
     return Fl::run();
 }
 
