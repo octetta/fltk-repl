@@ -118,6 +118,7 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
     skred_line(line, userdata);
 }
 
+
 static void gui_help(int argc, char **argv, void *userdata) {
     app_state *app = (app_state *)userdata;
     (void)argc;
@@ -136,7 +137,6 @@ static void gui_help(int argc, char **argv, void *userdata) {
 
 static void panel_to_skred(const char *line, void *user_data) {
     (void)user_data;
-    /* skred_command expects non-const -> make a copy */
     size_t len = strlen(line);
     char *cmd = (char *)malloc(len + 1);
     if (cmd) {
