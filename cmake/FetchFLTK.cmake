@@ -18,35 +18,41 @@ include(FetchContent)
 
 set(REPL_FLTK_GIT_REPO "https://github.com/fltk/fltk.git" CACHE STRING
     "Git URL to fetch FLTK from when vendoring automatically")
-set(REPL_FLTK_GIT_TAG "release-1.3.9" CACHE STRING
-    "Git tag/branch of FLTK to fetch")
+set(_repl_fltk_default_tag "release-1.4.5")
+# Migrate build directories configured with the repository's old default while
+# preserving any other explicit 1.4.x tag selected by the caller.
+if(REPL_FLTK_GIT_TAG STREQUAL "release-1.3.9")
+    set(REPL_FLTK_GIT_TAG "${_repl_fltk_default_tag}" CACHE STRING
+        "Git tag/branch of FLTK to fetch" FORCE)
+else()
+    set(REPL_FLTK_GIT_TAG "${_repl_fltk_default_tag}" CACHE STRING
+        "Git tag/branch of FLTK to fetch")
+endif()
 option(REPL_FETCH_FLTK "Automatically download FLTK via FetchContent if not found locally" ON)
 
 set(_repl_local_fltk "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fltk")
 
+# Apply the same lean configuration to local, vendored, and fetched trees.
+# SVG is required for in-memory diagram output such as SVG returned by Pikchr.
+set(FLTK_BUILD_TEST OFF CACHE BOOL "" FORCE)
+set(FLTK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(FLTK_BUILD_FLUID OFF CACHE BOOL "" FORCE)
+set(FLTK_BUILD_FLTK_OPTIONS OFF CACHE BOOL "" FORCE)
+set(FLTK_BUILD_FORMS OFF CACHE BOOL "" FORCE)
+set(FLTK_BUILD_GL OFF CACHE BOOL "" FORCE)
+set(FLTK_BUILD_HTML_DOCS OFF CACHE BOOL "" FORCE)
+set(FLTK_BUILD_PDF_DOCS OFF CACHE BOOL "" FORCE)
+set(FLTK_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(FLTK_OPTION_SVG ON CACHE BOOL "" FORCE)
+
 if(REPL_FLTK_DIR)
     message(STATUS "fltk-repl: using FLTK from REPL_FLTK_DIR=${REPL_FLTK_DIR}")
     add_subdirectory(${REPL_FLTK_DIR} ${CMAKE_BINARY_DIR}/_fltk_build EXCLUDE_FROM_ALL)
-    # FLTK 1.3.x's own CMakeLists.txt uses directory-scoped
-    # include_directories() rather than target_include_directories(),
-    # so those paths are NOT propagated to external targets that just
-    # link against the `fltk` target. Set them explicitly ourselves.
-    set(REPL_FLTK_INCLUDE_DIRS ${REPL_FLTK_DIR} ${CMAKE_BINARY_DIR}/_fltk_build)
 elseif(EXISTS "${_repl_local_fltk}/CMakeLists.txt")
     message(STATUS "fltk-repl: using vendored FLTK found at ${_repl_local_fltk}")
     add_subdirectory(${_repl_local_fltk} ${CMAKE_BINARY_DIR}/_fltk_build EXCLUDE_FROM_ALL)
-    set(REPL_FLTK_INCLUDE_DIRS ${_repl_local_fltk} ${CMAKE_BINARY_DIR}/_fltk_build)
 elseif(REPL_FETCH_FLTK)
     message(STATUS "fltk-repl: fetching FLTK ${REPL_FLTK_GIT_TAG} from ${REPL_FLTK_GIT_REPO}")
-
-    # Keep FLTK's own build small and fast -- we only need the core
-    # widget + images (for icons/native file chooser) + no GL/test apps.
-    set(FLTK_BUILD_TEST OFF CACHE BOOL "" FORCE)
-    set(FLTK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(FLTK_BUILD_FLUID OFF CACHE BOOL "" FORCE)
-    set(OPTION_BUILD_HTML_DOCUMENTATION OFF CACHE BOOL "" FORCE)
-    set(OPTION_BUILD_PDF_DOCUMENTATION OFF CACHE BOOL "" FORCE)
-    set(FLTK_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
     FetchContent_Declare(
         fltk
@@ -55,12 +61,6 @@ elseif(REPL_FETCH_FLTK)
         GIT_SHALLOW TRUE
     )
     FetchContent_MakeAvailable(fltk)
-
-    # Same reasoning as the two branches above: FLTK 1.3.x doesn't set
-    # INTERFACE_INCLUDE_DIRECTORIES on its `fltk` target, so we recover
-    # the paths ourselves. FetchContent_MakeAvailable() populates
-    # <name>_SOURCE_DIR / <name>_BINARY_DIR (lowercased) automatically.
-    set(REPL_FLTK_INCLUDE_DIRS ${fltk_SOURCE_DIR} ${fltk_BINARY_DIR})
 else()
     message(FATAL_ERROR
         "fltk-repl: no FLTK found and REPL_FETCH_FLTK is OFF. Either:\n"

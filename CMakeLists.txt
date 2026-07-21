@@ -15,13 +15,16 @@ endif()
 # ---------------------------------------------------------------------
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchFLTK.cmake)
 
-if(TARGET fltk::fltk)
-    set(REPL_FLTK_TARGET fltk::fltk)
-elseif(TARGET fltk)
-    set(REPL_FLTK_TARGET fltk)
-else()
-    message(FATAL_ERROR "fltk-repl: could not find FLTK target")
+if(NOT FLTK_VERSION OR FLTK_VERSION VERSION_LESS "1.4.0")
+    message(FATAL_ERROR "fltk-repl: FLTK 1.4.0 or newer is required (found '${FLTK_VERSION}')")
 endif()
+
+if(NOT TARGET fltk::fltk OR NOT TARGET fltk::images)
+    message(FATAL_ERROR "fltk-repl: FLTK core and image targets are required")
+endif()
+
+set(REPL_FLTK_TARGET fltk::images)
+message(STATUS "fltk-repl: FLTK ${FLTK_VERSION} with SVG support")
 
 # ---------------------------------------------------------------------
 # REPL library
@@ -36,10 +39,6 @@ add_library(replfltk STATIC
 
 target_include_directories(replfltk PUBLIC include PRIVATE src)
 target_link_libraries(replfltk PUBLIC ${REPL_FLTK_TARGET})
-
-if(REPL_FLTK_INCLUDE_DIRS)
-    target_include_directories(replfltk PUBLIC ${REPL_FLTK_INCLUDE_DIRS})
-endif()
 
 if(APPLE)
     target_link_libraries(replfltk PUBLIC "-framework Cocoa")
@@ -112,6 +111,13 @@ if(SKRED_BUILD_REPL)
     if(WIN32)
         set_target_properties(skred_repl PROPERTIES WIN32_EXECUTABLE FALSE)
     endif()
+endif()
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(repl_svg_smoke tests/svg_smoke.cpp)
+    target_link_libraries(repl_svg_smoke PRIVATE replfltk)
+    add_test(NAME repl_svg_smoke COMMAND repl_svg_smoke)
 endif()
 
 message(STATUS "fltk-repl configured successfully!")

@@ -14,7 +14,7 @@ FLTK checkout yourself, drop (or symlink) a full FLTK source tree at:
 so that `third_party/fltk/CMakeLists.txt` exists. The build will
 detect it automatically and use it instead of downloading, e.g.:
 
-    git clone --branch release-1.3.9 https://github.com/fltk/fltk.git third_party/fltk
+    git clone --branch release-1.4.5 https://github.com/fltk/fltk.git third_party/fltk
     cmake -B build
     cmake --build build -j
 

@@ -43,8 +43,9 @@ The current CMake implementation derives the package location from
 build, pre-populate `vendor/skred-<version>-maxed/` with `include/skred/api.h`
 and `lib64/libapi` or `lib/libapi` before configuring.
 
-FLTK 1.3.9 is fetched separately through CMake's `FetchContent`. To use a
-local FLTK source tree instead:
+FLTK 1.4.5 is fetched separately through CMake's `FetchContent`. SVG support
+is enabled and the reusable library links FLTK's image target. To use a local
+FLTK source tree instead:
 
 ```sh
 cmake -S . -B build -DREPL_FLTK_DIR=/path/to/fltk
@@ -53,6 +54,9 @@ cmake -S . -B build -DREPL_FLTK_DIR=/path/to/fltk
 Alternatively, place the source at `third_party/fltk/`. Set
 `-DREPL_FETCH_FLTK=OFF` to prevent network fallback. See
 [third_party/README.md](third_party/README.md).
+
+FLTK 1.4.0 or newer is required. Select a different 1.4.x release with
+`-DREPL_FLTK_GIT_TAG=release-1.4.x`.
 
 Use `-DSKRED_BUILD_REPL=OFF` to build only the reusable `replfltk` static
 library. `examples/demo/main.c` is retained as an API example but is not
@@ -133,6 +137,21 @@ grammar and [`include/repl/bitmap_win.h`](include/repl/bitmap_win.h) for the
 bitmap API.
 
 All bitmap and panel API calls must run on the FLTK main thread.
+
+## SVG and Pikchr readiness
+
+The build enables `Fl_SVG_Image` and verifies its in-memory constructor with
+the `repl_svg_smoke` CTest. This matches Pikchr's integration model, where
+`pikchr()` returns an allocated SVG string:
+
+```sh
+ctest --test-dir build --output-on-failure
+```
+
+FLTK uses NanoSVG and does not render SVG `<text>`, `<image>`, or `<use>`
+elements. Pikchr normally emits labels as `<text>`, so a future Pikchr diagram
+window will need an additional label strategy; passing its SVG directly to
+`Fl_SVG_Image` would otherwise display shapes and lines without their text.
 
 ## Integration overview
 
