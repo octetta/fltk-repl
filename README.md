@@ -1,18 +1,19 @@
 # Skred FLTK REPL
 
-A desktop REPL for Skred, built from the reusable FLTK terminal in this
-directory and linked to a **packaged PULP release API**. It does not link
-against PULP's build tree.
+A desktop front end for Skred built around a reusable FLTK terminal widget.
+The application links to the packaged Skred/PULP release API rather than a
+PULP build tree. Input that is not a GUI command is forwarded as a complete,
+unchanged line to `skred_command()`.
 
-The terminal provides scrollback, selection/copy/paste, command history,
-light and dark themes, configurable fonts, and native FLTK behavior on
-Linux, macOS, and Windows. Skred commands are forwarded as complete,
-unchanged lines to `skred_command()`.
+The terminal supports scrollback, command history, selection and clipboard
+operations, light and dark themes, configurable fonts, and native FLTK
+behavior on Linux, macOS, and Windows. The library also includes a bitmap
+output window and a small DSL for building Skred control panels.
 
 ## Build
 
-With a PULP checkout at `../../../pulp`, CMake automatically selects the
-newest matching maxed release for the current platform:
+The default build requires CMake 3.16 or newer, a C/C++ toolchain, `curl`,
+`tar`, and network access on the first configure:
 
 ```sh
 cmake -S . -B build
@@ -20,77 +21,125 @@ cmake --build build -j
 ./build/skred_repl
 ```
 
-The same commands are available as:
+The Makefile provides shortcuts for the same workflow:
 
 ```sh
-make
-make run
+make          # configure a Release build and compile it
+make run      # build and launch the application
+make info     # show relevant cached CMake settings
+make clean    # remove build/
 ```
 
-To select a specific installed or unpacked release:
+CMake downloads the selected maxed Skred release from the PULP GitHub
+releases into `vendor/`. Version 0.51.0 is the default; select another
+published version at configure time with:
 
 ```sh
-cmake -S . -B build \
-  -DSKRED_ROOT=/path/to/skred-0.51.0-maxed
-cmake --build build -j
+cmake -S . -B build -DSKRED_VERSION=0.51.0
 ```
 
-`SKRED_ROOT` must contain `include/skred/api.h` and `lib64/libapi` (or
-`lib/libapi`). It may also be supplied as an environment variable. The
-configured release library directory is placed in the executable's build
-RPATH, so `build/skred_repl` can be run directly.
+The current CMake implementation derives the package location from
+`SKRED_VERSION`; `SKRED_ROOT` is not a supported override. For an offline
+build, pre-populate `vendor/skred-<version>-maxed/` with `include/skred/api.h`
+and `lib64/libapi` or `lib/libapi` before configuring.
 
-The first FLTK configure may download FLTK. For offline builds, either set
-`REPL_FLTK_DIR` to an FLTK source tree or place one in `third_party/fltk`.
-See [third_party/README.md](third_party/README.md).
+FLTK 1.3.9 is fetched separately through CMake's `FetchContent`. To use a
+local FLTK source tree instead:
 
-To verify the selected release without opening a window or starting audio:
+```sh
+cmake -S . -B build -DREPL_FLTK_DIR=/path/to/fltk
+```
+
+Alternatively, place the source at `third_party/fltk/`. Set
+`-DREPL_FETCH_FLTK=OFF` to prevent network fallback. See
+[third_party/README.md](third_party/README.md).
+
+Use `-DSKRED_BUILD_REPL=OFF` to build only the reusable `replfltk` static
+library. `examples/demo/main.c` is retained as an API example but is not
+currently registered as a CMake target.
+
+## Verify the linked release
+
+Print the linked Skred version and feature list without creating a window or
+starting audio:
 
 ```sh
 ./build/skred_repl --check
 ```
 
-## Running
-
-Defaults follow `mini-skred` where useful, except UDP is disabled unless
-requested:
+## Command-line options
 
 ```text
--v, --voices N       voice count (default 32)
--r, --frames N       requested audio frames (default 128)
--p, --port N         UDP control port (default 0)
+-v, --voices N       voice count, 1..64 (default 32)
+-r, --frames N       positive audio frames per callback (default 128)
+-p, --port N         UDP control port (default 0, disabled)
 -o, --output N       playback device index (default -1)
--i, --input N        capture device index (-2 disables capture)
+-i, --input N        capture device index (default -1; -2 disables capture)
+    --check           print release information and exit
+-h, --help            show usage and exit
 ```
 
-Compact forms such as `-v32`, `-r128`, and `-p60440` are also accepted.
+Compact short forms such as `-v32`, `-r128`, `-p60440`, `-o0`, and `-i-2`
+are accepted.
 
-Inside the window, every line not recognized as a GUI command goes directly
-to Skred. The GUI-only commands are:
+## REPL commands
+
+The prompt is `# `. These commands are handled by the GUI:
 
 ```text
 help
 clear
 theme light|dark
-font "font name" [size]
+font ["font name" [size]]
+bitmap [show|hide|clear]
+panel load <file.pnl>
+panel reload
+panel hide
+boot [voices N] [frames N] [port N]
 quit
 exit
 ```
 
-Use Up/Down for history. Normal mouse selection, copy, and paste work across
-the scrollback and current input line.
+`font` with no arguments reports the current font and lists detected
+monospace fonts. `boot` stops and restarts the Skred engine, retaining current
+values for settings not supplied. Panel widget commands and all other input
+are passed to Skred.
 
-## Integration details
+Use Up/Down for history. Home or Ctrl/Cmd+A moves to the start of live input;
+End or Ctrl/Cmd+E moves to its end. Ctrl/Cmd+U clears back to the prompt,
+Ctrl/Cmd+K clears forward, Ctrl/Cmd+W deletes the preceding word, and Escape
+clears the line. Ctrl/Cmd with `+`, `-`, or `0` adjusts or resets font size.
+A right-click menu provides Copy, Paste, and Clear Line.
 
-The generic FLTK C API now has `repl_set_fallback_handler()`. Registered GUI
-commands are dispatched normally; any other input invokes the fallback with
-the original line. `examples/skred/main.c` uses that callback to:
+## Bitmap and panel windows
 
-1. make the mutable copy required by `skred_command()`;
-2. print `skred_log()` into the terminal;
-3. preserve `mini-skred`'s positive return display and negative-return exit;
-4. stop Skred's control dispatcher and audio engine on application exit.
+`bitmap` controls the default graphics window. Image producers use the public
+`bitmap_win_set_rgb()` or `bitmap_win_set_gray()` C APIs; until an image is
+provided, showing the window displays an empty canvas. The current registry
+uses one shared bitmap window even when callers request different names.
 
-The generic FLTK demo remains available with
-`-DREPL_BUILD_DEMO=ON`; the Skred application can be disabled with
-`-DSKRED_BUILD_REPL=OFF`.
+Load the included panel example from the repository root with:
+
+```text
+panel load controls.pnl
+```
+
+The panel DSL supports sliders, numeric fields, toggles, buttons, choices,
+labels, and weighted rows. Widget templates substitute `%d`, `%f`, or `%s`
+and send the resulting command to Skred. `panel reload` reparses the last
+loaded path while preserving the panel window. Parse failures are reported to
+stderr. See [`include/repl/panel_dsl.h`](include/repl/panel_dsl.h) for the DSL
+grammar and [`include/repl/bitmap_win.h`](include/repl/bitmap_win.h) for the
+bitmap API.
+
+All bitmap and panel API calls must run on the FLTK main thread.
+
+## Integration overview
+
+The public C API is declared under `include/repl/`; implementation files are
+under `src/`. `repl_set_fallback_handler()` lets an embedding application keep
+a small set of registered GUI commands while routing every other original
+line to its own language runtime. `examples/skred/main.c` demonstrates this
+pattern, copies input into the mutable buffer required by `skred_command()`,
+prints `skred_log()`, and shuts down the Skred dispatcher and audio engine
+when the application exits.
