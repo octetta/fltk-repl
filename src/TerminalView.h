@@ -73,9 +73,18 @@ private:
     ReplColors colors_;
     Fl_Font font_ = FL_COURIER;
     int font_size_ = 14;
+    std::string pressed_url_;
+    int press_x_ = 0;
+    int press_y_ = 0;
+    bool url_dragged_ = false;
 
     void rebuildStyleTable();
     void appendStyled(const std::string &utf8, char styleChar);
+    void styleOutputUrls(int start, int end);
+    std::string urlAtPosition(int position) const;
+    std::string urlAtEvent() const;
+    void updateUrlCursor();
+    bool openUrl(const std::string &url);
     std::string liveText() const;
     void replaceLiveText(const std::string &s);
     void snapCursorToEndIfBeforeInput();

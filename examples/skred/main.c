@@ -85,7 +85,24 @@ static const char *miniaudio_version(void) {
     return version && *version ? version : "unknown";
 }
 
+static void print_banner_stdout(void) {
+    printf(" _                 _ \n");
+    printf(" ___| | ___ __ ___  __| |\n");
+    printf("/ __| |/ / '__/ _ \\/ _  |\n");
+    printf("\\__ \\   <| | |  __/ (_| |\n");
+    printf("|___/_|\\_\\_|  \\___|\\__,_|\n");
+}
+
+static void print_banner_repl(app_state *app) {
+    repl_println(app->repl, "     _                 _ ");
+    repl_println(app->repl, " ___| | ___ __ ___  __| |");
+    repl_println(app->repl, "/ __| |/ / '__/ _ \\/ _  |");
+    repl_println(app->repl, "\\__ \\   <| | |  __/ (_| |");
+    repl_println(app->repl, "|___/_|\\_\\_|  \\___|\\__,_|");
+}
+
 static void print_release_info_stdout(void) {
+    print_banner_stdout();
     printf("skrepl %s\n", FLTK_REPL_VERSION);
     printf("Built %s\n", FLTK_REPL_BUILD_DATE);
     printf("Skred %s\n", skred_version());
@@ -99,6 +116,7 @@ static void print_release_info_stdout(void) {
 }
 
 static void print_release_info_repl(app_state *app) {
+    print_banner_repl(app);
     repl_printf(app->repl, "skrepl %s\n", FLTK_REPL_VERSION);
     repl_printf(app->repl, "Built %s\n", FLTK_REPL_BUILD_DATE);
     repl_printf(app->repl, "Skred %s\n", skred_version());

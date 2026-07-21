@@ -46,10 +46,20 @@ int bitmap_win_set_spectrogram_labeled(bitmap_win_t *bw, const float *samples,
                                        int frames, int channels, int channel,
                                        int width, int height,
                                        const char *title);
+int bitmap_win_set_spectrogram_labeled_ex(bitmap_win_t *bw,
+                                          const float *samples, int frames,
+                                          int channels, int channel, int width,
+                                          int height, const char *title,
+                                          float sample_rate);
 int bitmap_win_set_waveform(bitmap_win_t *bw, const float *samples,
                             int frames, int channels, int channel,
                             int width, int height, const char *title,
                             int loop_start, int loop_end);
+int bitmap_win_set_waveform_ex(bitmap_win_t *bw, const float *samples,
+                               int frames, int channels, int channel,
+                               int width, int height, const char *title,
+                               int loop_start, int loop_end,
+                               float sample_rate);
 
 void bitmap_win_clear(bitmap_win_t *bw);
 void bitmap_win_set_title(bitmap_win_t *bw, const char *title);

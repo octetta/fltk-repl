@@ -1,11 +1,24 @@
 #include "TerminalView.h"
 #include <FL/fl_ask.H>
+#include <FL/filename.H>
 #include <FL/Fl_Menu_Item.H>
+#include <FL/Fl_Window.H>
+#include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <cstdint>
 #include <cctype>
 
 namespace {
+
+bool isUrlTerminator(unsigned char ch) {
+    return std::isspace(ch) || ch == '<' || ch == '>' || ch == '"';
+}
+
+bool isTrailingUrlPunctuation(char ch) {
+    return ch == '.' || ch == ',' || ch == ';' || ch == ':' ||
+           ch == '!' || ch == '?' || ch == ')' || ch == ']' || ch == '}';
+}
 
 // FLTK's buffer modify callback has C linkage requirements (plain
 // function pointer), so this free function forwards to the widget's
@@ -64,7 +77,7 @@ void TerminalView::rebuildStyleTable() {
     // Style 'A': Muted/slate contrast for output so live input ('C') stands out cleanly
     uint32_t outputColor = isDarkBg ? 0xA0AAB0 : 0x4A5568;
 
-    static Fl_Text_Display::Style_Table_Entry table[3];
+    static Fl_Text_Display::Style_Table_Entry table[4];
     table[0].color = repl_rgb_to_flcolor(outputColor);
     table[0].font  = font_;
     table[0].size  = font_size_;
@@ -80,7 +93,13 @@ void TerminalView::rebuildStyleTable() {
     table[2].size  = font_size_;
     table[2].attr  = 0;
 
-    highlight_data(style_, table, 3, 'A', nullptr, nullptr);
+    // Style 'D': clickable URL in terminal output.
+    table[3].color = repl_rgb_to_flcolor(isDarkBg ? 0x75C8FF : 0x0068B5);
+    table[3].font  = font_;
+    table[3].size  = font_size_;
+    table[3].attr  = Fl_Text_Display::ATTR_UNDERLINE;
+
+    highlight_data(style_, table, 4, 'A', nullptr, nullptr);
 
     color(repl_rgb_to_flcolor(colors_.bg));
     textfont(font_);
@@ -135,9 +154,93 @@ void TerminalView::appendStyled(const std::string &utf8, char styleChar) {
 }
 
 void TerminalView::appendOutput(const std::string &utf8) {
+    const int start = buffer_->length();
     appendStyled(utf8, 'A');
+    styleOutputUrls(start, buffer_->length());
     insert_position(buffer_->length());
     show_insert_position();
+}
+
+void TerminalView::styleOutputUrls(int start, int end) {
+    if (start >= end) return;
+    start = buffer_->line_start(start);
+    end = buffer_->line_end(std::min(end, buffer_->length()));
+    char *raw = buffer_->text_range(start, end);
+    if (!raw) return;
+    const std::string text(raw);
+    free(raw);
+
+    size_t cursor = 0;
+    while (cursor < text.size()) {
+        const size_t http = text.find("http://", cursor);
+        const size_t https = text.find("https://", cursor);
+        size_t begin = std::min(http, https);
+        if (http == std::string::npos) begin = https;
+        if (https == std::string::npos) begin = http;
+        if (begin == std::string::npos) break;
+        size_t finish = begin;
+        while (finish < text.size() &&
+               !isUrlTerminator(static_cast<unsigned char>(text[finish]))) {
+            ++finish;
+        }
+        while (finish > begin && isTrailingUrlPunctuation(text[finish - 1]))
+            --finish;
+        if (finish > begin)
+            style_->replace(start + static_cast<int>(begin),
+                            start + static_cast<int>(finish),
+                            std::string(finish - begin, 'D').c_str());
+        cursor = std::max(finish, begin + 1);
+    }
+}
+
+std::string TerminalView::urlAtPosition(int position) const {
+    if (position < 0 || position >= input_start_) return {};
+    const int lineStart = buffer_->line_start(position);
+    const int lineEnd = buffer_->line_end(position);
+    char *raw = buffer_->text_range(lineStart, lineEnd);
+    if (!raw) return {};
+    const std::string line(raw);
+    free(raw);
+    const size_t offset = static_cast<size_t>(position - lineStart);
+
+    size_t cursor = 0;
+    while (cursor < line.size()) {
+        const size_t http = line.find("http://", cursor);
+        const size_t https = line.find("https://", cursor);
+        size_t begin = std::min(http, https);
+        if (http == std::string::npos) begin = https;
+        if (https == std::string::npos) begin = http;
+        if (begin == std::string::npos) break;
+        size_t finish = begin;
+        while (finish < line.size() &&
+               !isUrlTerminator(static_cast<unsigned char>(line[finish]))) {
+            ++finish;
+        }
+        while (finish > begin && isTrailingUrlPunctuation(line[finish - 1]))
+            --finish;
+        if (offset >= begin && offset < finish)
+            return line.substr(begin, finish - begin);
+        cursor = std::max(finish, begin + 1);
+    }
+    return {};
+}
+
+std::string TerminalView::urlAtEvent() const {
+    return urlAtPosition(xy_to_position(Fl::event_x(), Fl::event_y()));
+}
+
+void TerminalView::updateUrlCursor() {
+    if (window())
+        window()->cursor(urlAtEvent().empty() ? FL_CURSOR_DEFAULT : FL_CURSOR_HAND);
+}
+
+bool TerminalView::openUrl(const std::string &url) {
+    char message[256] = {0};
+    if (fl_open_uri(url.c_str(), message, sizeof(message)) == 0) {
+        fl_alert("Could not open URL:\n%s", message[0] ? message : url.c_str());
+        return false;
+    }
+    return true;
 }
 
 void TerminalView::showPrompt() {
@@ -237,6 +340,37 @@ int TerminalView::handle(int event) {
             }
         }
         return 1;
+    }
+
+    if (event == FL_MOVE) {
+        updateUrlCursor();
+    } else if (event == FL_LEAVE) {
+        if (window()) window()->cursor(FL_CURSOR_DEFAULT);
+    } else if (event == FL_PUSH && Fl::event_button() == FL_LEFT_MOUSE) {
+        pressed_url_ = urlAtEvent();
+        press_x_ = Fl::event_x();
+        press_y_ = Fl::event_y();
+        url_dragged_ = false;
+    } else if (event == FL_DRAG && !pressed_url_.empty()) {
+        if (std::abs(Fl::event_x() - press_x_) > 3 ||
+            std::abs(Fl::event_y() - press_y_) > 3) {
+            url_dragged_ = true;
+        }
+    } else if (event == FL_RELEASE && Fl::event_button() == FL_LEFT_MOUSE &&
+               !pressed_url_.empty()) {
+        const std::string releasedUrl = urlAtEvent();
+        const std::string pressedUrl = pressed_url_;
+        const bool activate = !url_dragged_ && releasedUrl == pressedUrl;
+        pressed_url_.clear();
+        url_dragged_ = false;
+        const int handled = Fl_Text_Editor::handle(event);
+        if (activate) {
+            buffer_->unselect();
+            redraw();
+            openUrl(pressedUrl);
+            return 1;
+        }
+        return handled;
     }
 
     if (event == FL_KEYBOARD) {

@@ -9,9 +9,11 @@ The skrepl version is stored in `VERSION` and printed before the linked Skred
 version at startup and by `./build/skrepl --check`.
 
 The terminal supports scrollback, command history, selection and clipboard
-operations, light and dark themes, configurable fonts, and native FLTK
-behavior on Linux, macOS, and Windows. The library also includes a bitmap
-output window and a small DSL for building Skred control panels.
+operations, clickable HTTP/HTTPS links, light and dark themes, configurable
+fonts, and native FLTK behavior on Linux, macOS, and Windows. Links are
+underlined, show a hand cursor, and open with the platform's default handler;
+dragging continues to select text. The library also includes a bitmap output
+window and a small DSL for building Skred control panels.
 
 ## Credits and project links
 
@@ -173,7 +175,16 @@ Record channel `-1` (the default) downmixes stereo; `0` and `1` select the
 left or right channel. Both sources preserve their stored amplitudes, and the
 record command respects its current start offset and end trim. Spectrograms
 embed the source title and axis cues using an Atari-vector-inspired stroke
-font, so labels remain crisp without a platform font dependency.
+font with distinct uppercase and lowercase glyphs, so labels remain crisp
+without a platform font dependency. Built-in spectrogram and waveform labels
+use lowercase. Labels are retained as stroke descriptions and drawn after the
+image is scaled, so resizing a window does not enlarge rasterized text. The
+display reports frame count, RMS and peak levels in dBFS,
+DC offset, dominant spectral peak, centroid, bandwidth, 85% rolloff, and
+spectral flatness. The Skred bridge queries stored wavetable rates through the
+clean `W* wave,param` result and uses the active audio rate for record buffers,
+so frequency metrics are normally shown in hertz. The reusable API falls back
+to Nyquist-normalized (`nyq`) values when no rate is supplied.
 
 Use the same sources for a conventional x/y waveform plot:
 
@@ -184,9 +195,13 @@ waveform record 1
 ```
 
 Waveform labels sit outside the plot and report the frame count and stored
-amplitude range. The renderer accepts loop start/end frame markers, but Skred
-0.52.0 does not yet include wavetable loop metadata in foreign-function calls,
-so REPL-sourced plots currently leave those markers unset.
+amplitude range, peak-to-peak level, RMS, peak dBFS, DC offset, crest factor,
+and zero-crossing rate. Available loop markers also report their frame range,
+duration, and position. Although Skred 0.52.0 does not attach metadata to its
+foreign-function data call, skrepl obtains wavetable loop boundaries with
+`W* wave,3` and `W* wave,4` before transferring the samples. Record-buffer
+transfers are already trimmed, so their original `W-` start/end bounds are not
+misrepresented as loops over the returned data.
 
 Load the included panel example from the repository root with:
 

@@ -1,5 +1,6 @@
-#include "bitmap_win.h"
+#include "repl/bitmap_win.h"
 #include "Spectrogram.h"
+#include "VectorFont.h"
 #include "Waveform.h"
 
 #include <FL/Fl.H>
@@ -32,6 +33,18 @@ public:
         src_.assign(rgb, rgb + (size_t)w * h * 3);
         src_w_ = w;
         src_h_ = h;
+        labels_.clear();
+        invalidate_cache();
+        redraw();
+    }
+
+    void set_rgb_labeled(const uint8_t *rgb, int w, int h,
+                         std::vector<ReplVectorLabel> labels) {
+        if (w <= 0 || h <= 0 || !rgb) return;
+        src_.assign(rgb, rgb + (size_t)w * h * 3);
+        src_w_ = w;
+        src_h_ = h;
+        labels_ = std::move(labels);
         invalidate_cache();
         redraw();
     }
@@ -47,12 +60,14 @@ public:
         }
         src_w_ = w;
         src_h_ = h;
+        labels_.clear();
         invalidate_cache();
         redraw();
     }
 
     void clear() {
         src_.clear();
+        labels_.clear();
         src_w_ = src_h_ = 0;
         invalidate_cache();
         redraw();
@@ -82,6 +97,18 @@ protected:
 
         ensure_scaled(dw, dh);
         if (scaled_img_) scaled_img_->draw(dx, dy);
+        if (!labels_.empty()) {
+            fl_push_clip(dx, dy, dw, dh);
+            for (const ReplVectorLabel &label : labels_) {
+                repl_draw_vector_text_fltk(
+                    label.text.c_str(),
+                    dx + static_cast<float>(label.x * s),
+                    dy + static_cast<float>(label.y * s),
+                    static_cast<float>(label.cellHeight * s),
+                    label.red, label.green, label.blue);
+            }
+            fl_pop_clip();
+        }
     }
 
 private:
@@ -123,6 +150,7 @@ private:
 
     std::vector<uint8_t> src_;    /* original pixels, RGB */
     std::vector<uint8_t> scaled_; /* cached resampled pixels, RGB */
+    std::vector<ReplVectorLabel> labels_;
     Fl_RGB_Image *scaled_img_;
     int src_w_, src_h_;
     int scaled_w_, scaled_h_;
@@ -223,17 +251,29 @@ int bitmap_win_set_spectrogram_labeled(bitmap_win_t *bw, const float *samples,
                                        int frames, int channels, int channel,
                                        int width, int height,
                                        const char *title) {
+    return bitmap_win_set_spectrogram_labeled_ex(
+        bw, samples, frames, channels, channel, width, height, title, 0.0f);
+}
+
+int bitmap_win_set_spectrogram_labeled_ex(bitmap_win_t *bw,
+                                          const float *samples, int frames,
+                                          int channels, int channel, int width,
+                                          int height, const char *title,
+                                          float sample_rate) {
     if (!bw) return -1;
     if (width < 240 || height < 120) {
         return bitmap_win_set_spectrogram(bw, samples, frames, channels,
                                           channel, width, height);
     }
-    const int bandHeight = std::clamp(height / 11, 24, 38);
+    const int bandHeight = std::clamp(height / 7, 36, 56);
     const int plotHeight = height - bandHeight * 2;
     std::vector<uint8_t> plot;
     std::vector<uint8_t> rgb(static_cast<size_t>(width) * height * 3, 0);
+    ReplSpectralMetrics spectralMetrics;
+    std::vector<ReplVectorLabel> labels;
     if (!repl_render_spectrogram_rgb(samples, frames, channels, channel,
-                                     width, plotHeight, plot)) {
+                                     width, plotHeight, plot,
+                                     &spectralMetrics)) {
         return -1;
     }
     for (int y = 0; y < plotHeight; ++y) {
@@ -241,8 +281,10 @@ int bitmap_win_set_spectrogram_labeled(bitmap_win_t *bw, const float *samples,
                     &plot[(static_cast<size_t>(y) * width) * 3],
                     static_cast<size_t>(width) * 3);
     }
-    repl_annotate_spectrogram_rgb(rgb, width, height, title);
-    bw->view->set_rgb(rgb.data(), width, height);
+    repl_annotate_spectrogram_rgb(rgb, width, height, title, samples, frames,
+                                  channels, channel, &spectralMetrics,
+                                  sample_rate, &labels);
+    bw->view->set_rgb_labeled(rgb.data(), width, height, std::move(labels));
     return 0;
 }
 
@@ -250,12 +292,23 @@ int bitmap_win_set_waveform(bitmap_win_t *bw, const float *samples,
                             int frames, int channels, int channel,
                             int width, int height, const char *title,
                             int loop_start, int loop_end) {
+    return bitmap_win_set_waveform_ex(bw, samples, frames, channels, channel,
+                                      width, height, title, loop_start,
+                                      loop_end, 0.0f);
+}
+
+int bitmap_win_set_waveform_ex(bitmap_win_t *bw, const float *samples,
+                               int frames, int channels, int channel,
+                               int width, int height, const char *title,
+                               int loop_start, int loop_end,
+                               float sample_rate) {
     if (!bw) return -1;
     std::vector<uint8_t> rgb;
+    std::vector<ReplVectorLabel> labels;
     if (!repl_render_waveform_rgb(samples, frames, channels, channel,
                                   width, height, title, loop_start, loop_end,
-                                  rgb)) return -1;
-    bw->view->set_rgb(rgb.data(), width, height);
+                                  rgb, sample_rate, &labels)) return -1;
+    bw->view->set_rgb_labeled(rgb.data(), width, height, std::move(labels));
     return 0;
 }
 

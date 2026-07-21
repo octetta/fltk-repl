@@ -1,4 +1,5 @@
 #include "Waveform.h"
+#include "AudioMetrics.h"
 
 #include <cmath>
 #include <cstdint>
@@ -15,11 +16,18 @@ int main() {
     }
 
     std::vector<uint8_t> rgb;
+    ReplAudioMetrics metrics;
+    if (!repl_measure_audio(samples.data(), frames, 1, 0, metrics)) return 1;
+    if (std::fabs(metrics.rms - 0.565685f) > 0.001f) return 2;
+    if (std::fabs(metrics.peakDbfs - -1.9382f) > 0.02f) return 3;
+    if (std::fabs(metrics.crestDb - 3.0103f) > 0.02f) return 4;
+    if (std::fabs(metrics.dc) > 0.001f) return 5;
     if (!repl_render_waveform_rgb(samples.data(), frames, 1, 0,
-                                  width, height, "WAVE 12", 200, 800, rgb)) {
-        return 1;
+                                  width, height, "wave 12", 200, 800, rgb,
+                                  48000.0f)) {
+        return 6;
     }
-    if (rgb.size() != static_cast<size_t>(width) * height * 3) return 2;
+    if (rgb.size() != static_cast<size_t>(width) * height * 3) return 7;
 
     int waveformPixels = 0;
     int loopPixels = 0;
@@ -34,13 +42,22 @@ int main() {
                 ++labelPixels;
         }
     }
-    if (waveformPixels < 500) return 3;
-    if (loopPixels < 100) return 4;
-    if (labelPixels < 40) return 5;
+    if (waveformPixels < 500) return 8;
+    if (loopPixels < 100) return 9;
+    if (labelPixels < 40) return 10;
+
+    std::vector<ReplVectorLabel> labels;
+    if (!repl_render_waveform_rgb(samples.data(), frames, 1, 0,
+                                  width, height, "wave 12", 200, 800, rgb,
+                                  48000.0f, &labels)) {
+        return 11;
+    }
+    if (labels.size() < 4 || labels.front().text != "wave 12")
+        return 12;
 
     if (repl_render_waveform_rgb(samples.data(), frames, 1, 1,
-                                 width, height, "BAD", -1, -1, rgb)) {
-        return 6;
+                                 width, height, "bad", -1, -1, rgb)) {
+        return 13;
     }
     return 0;
 }

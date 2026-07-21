@@ -14,8 +14,9 @@ int main() {
     }
 
     std::vector<uint8_t> rgb;
+    ReplSpectralMetrics metrics;
     if (!repl_render_spectrogram_rgb(samples.data(), frames, 1, 0,
-                                     width, height, rgb)) {
+                                     width, height, rgb, &metrics)) {
         return 1;
     }
     if (rgb.size() != static_cast<size_t>(width) * height * 3) return 2;
@@ -25,18 +26,32 @@ int main() {
         if (value > brightest) brightest = value;
     }
     if (brightest < 200) return 3;
+    if (metrics.peakNyquist < 0.05f || metrics.peakNyquist > 0.08f)
+        return 4;
+    if (!std::isfinite(metrics.centroidNyquist) ||
+        !std::isfinite(metrics.flatnessDb)) return 5;
 
     const std::vector<uint8_t> unlabelled = rgb;
-    repl_annotate_spectrogram_rgb(rgb, width, height, "WAVE 42");
+    repl_annotate_spectrogram_rgb(rgb, width, height, "wave 42",
+                                  samples.data(), frames, 1, 0, &metrics,
+                                  48000.0f);
     size_t changed = 0;
     for (size_t i = 0; i < rgb.size(); ++i) {
         if (rgb[i] != unlabelled[i]) ++changed;
     }
-    if (changed < 100) return 4;
+    if (changed < 100) return 6;
+
+    std::vector<ReplVectorLabel> labels;
+    rgb = unlabelled;
+    repl_annotate_spectrogram_rgb(rgb, width, height, "wave 42",
+                                  samples.data(), frames, 1, 0, &metrics,
+                                  48000.0f, &labels);
+    if (labels.size() < 4 || labels.front().text != "wave 42")
+        return 7;
 
     if (repl_render_spectrogram_rgb(samples.data(), frames, 1, 1,
                                     width, height, rgb)) {
-        return 5;
+        return 8;
     }
     return 0;
 }

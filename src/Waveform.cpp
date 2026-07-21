@@ -1,4 +1,5 @@
 #include "Waveform.h"
+#include "AudioMetrics.h"
 #include "VectorFont.h"
 
 #include <algorithm>
@@ -56,14 +57,37 @@ float sampleAt(const float *samples, int frame, int channels, int channel) {
     return total / channels;
 }
 
+int fittedCellHeight(const char *text, int maximumWidth, int maximumHeight) {
+    int height = maximumHeight;
+    while (height > 7 && repl_vector_text_width(text, height) > maximumWidth)
+        --height;
+    return height;
+}
+
+void drawLabel(std::vector<uint8_t> &rgb, int width, int height,
+               std::vector<ReplVectorLabel> *labels, const char *text,
+               int x, int y, int cellHeight, uint8_t red, uint8_t green,
+               uint8_t blue) {
+    if (labels) {
+        labels->push_back({text ? text : "", x, y, cellHeight,
+                           red, green, blue});
+    } else {
+        repl_draw_vector_text_rgb(rgb, width, height, text, x, y, cellHeight,
+                                  red, green, blue);
+    }
+}
+
 } // namespace
 
 bool repl_render_waveform_rgb(const float *samples, int frames,
                               int channels, int channel,
                               int width, int height, const char *title,
                               int loopStart, int loopEnd,
-                              std::vector<uint8_t> &rgb) {
+                              std::vector<uint8_t> &rgb,
+                              float sampleRate,
+                              std::vector<ReplVectorLabel> *labels) {
     rgb.clear();
+    if (labels) labels->clear();
     if (!samples || frames <= 0 || channels <= 0 || channel < -1 ||
         channel >= channels || width < 240 || height < 120 ||
         width > 4096 || height > 2048) return false;
@@ -74,7 +98,7 @@ bool repl_render_waveform_rgb(const float *samples, int frames,
         rgb.assign(pixels * 3, 0);
         Canvas canvas{rgb, width, height};
         const int top = std::clamp(height / 10, 32, 44);
-        const int bottom = std::clamp(height / 11, 28, 38);
+        const int bottom = std::clamp(height / 6, 52, 72);
         const int left = 48;
         const int right = width - 14;
         const int plotBottom = height - bottom - 1;
@@ -82,13 +106,11 @@ bool repl_render_waveform_rgb(const float *samples, int frames,
         const int plotHeight = plotBottom - top + 1;
         const int center = top + plotHeight / 2;
 
-        float minimum = 0.0f;
-        float maximum = 0.0f;
-        for (int i = 0; i < frames; ++i) {
-            const float value = sampleAt(samples, i, channels, channel);
-            minimum = std::min(minimum, value);
-            maximum = std::max(maximum, value);
-        }
+        ReplAudioMetrics metrics;
+        if (!repl_measure_audio(samples, frames, channels, channel, metrics))
+            return false;
+        const float minimum = metrics.minimum;
+        const float maximum = metrics.maximum;
         const float range = std::max(1.0f, std::max(std::fabs(minimum),
                                                     std::fabs(maximum)));
         auto sampleY = [&](float value) {
@@ -148,30 +170,64 @@ bool repl_render_waveform_rgb(const float *samples, int frames,
         drawLoop(loopEnd, 255, 178, 72);
 
         const int cellHeight = top - 8;
-        repl_draw_vector_text_rgb(rgb, width, height,
-                                  title && *title ? title : "WAVEFORM",
-                                  8, 3, cellHeight, 226, 246, 255);
-        char samplesLabel[48];
-        std::snprintf(samplesLabel, sizeof(samplesLabel), "N %d", frames);
-        repl_draw_vector_text_rgb(rgb, width, height, samplesLabel,
-                                  8, height - bottom + 3, bottom - 7,
-                                  148, 224, 255);
-        char rangeLabel[64];
-        std::snprintf(rangeLabel, sizeof(rangeLabel),
-                      "MIN %.3f  MAX %.3f", minimum, maximum);
-        const int rangeWidth = repl_vector_text_width(rangeLabel, bottom - 7);
-        repl_draw_vector_text_rgb(rgb, width, height, rangeLabel,
-                                  std::max(8, width - rangeWidth - 8),
-                                  height - bottom + 3, bottom - 7,
-                                  255, 200, 112);
+        char loopLabel[64] = {0};
         if (loopStart >= 0 && loopEnd >= loopStart) {
-            char loopLabel[64];
-            std::snprintf(loopLabel, sizeof(loopLabel), "LOOP %d-%d",
-                          loopStart, loopEnd);
-            const int loopWidth = repl_vector_text_width(loopLabel, cellHeight);
-            repl_draw_vector_text_rgb(rgb, width, height, loopLabel,
-                                      width - loopWidth - 8, 3, cellHeight,
-                                      104, 255, 144);
+            if (sampleRate > 0.0f) {
+                std::snprintf(loopLabel, sizeof(loopLabel),
+                              "loop %d-%d %.2fms", loopStart, loopEnd,
+                              (loopEnd - loopStart) * 1000.0f / sampleRate);
+            } else {
+                std::snprintf(loopLabel, sizeof(loopLabel), "loop %d-%d len %d",
+                              loopStart, loopEnd, loopEnd - loopStart);
+            }
+        }
+        const int loopHeight = loopLabel[0] ? fittedCellHeight(
+            loopLabel, width / 2, cellHeight) : cellHeight;
+        const int loopWidth = loopLabel[0] ?
+            repl_vector_text_width(loopLabel, loopHeight) : 0;
+        const char *displayTitle = title && *title ? title : "waveform";
+        const int titleHeight = fittedCellHeight(
+            displayTitle, std::max(40, width - loopWidth - 24), cellHeight);
+        drawLabel(rgb, width, height, labels, displayTitle,
+                  8, 3, titleHeight, 226, 246, 255);
+        char rangeLabel[160];
+        char levelLabel[200];
+        if (width >= 600) {
+            if (sampleRate > 0.0f) {
+                std::snprintf(rangeLabel, sizeof(rangeLabel),
+                              "n %d  %.2fms  min %+.4f  max %+.4f  p-p %.4f",
+                              frames, frames * 1000.0f / sampleRate,
+                              minimum, maximum, metrics.peakToPeak);
+            } else {
+                std::snprintf(rangeLabel, sizeof(rangeLabel),
+                              "n %d  min %+.4f  max %+.4f  p-p %.4f",
+                              frames, minimum, maximum, metrics.peakToPeak);
+            }
+            std::snprintf(levelLabel, sizeof(levelLabel),
+                          "rms %.4f  peak %.2fdbfs  dc %+.4f  crest %.2fdb  zcr %.2f%%",
+                          metrics.rms, metrics.peakDbfs, metrics.dc,
+                          metrics.crestDb, metrics.zeroCrossingPercent);
+        } else {
+            std::snprintf(rangeLabel, sizeof(rangeLabel),
+                          "n %d min %+.3f max %+.3f",
+                          frames, minimum, maximum);
+            std::snprintf(levelLabel, sizeof(levelLabel),
+                          "rms %.3f peak %.1fdb zcr %.1f%%",
+                          metrics.rms, metrics.peakDbfs,
+                          metrics.zeroCrossingPercent);
+        }
+        const int rowHeight = (bottom - 5) / 2;
+        const int rangeHeight = fittedCellHeight(
+            rangeLabel, width - 16, rowHeight);
+        drawLabel(rgb, width, height, labels, rangeLabel, 8,
+                  height - bottom + 1, rangeHeight, 148, 224, 255);
+        const int levelHeight = fittedCellHeight(
+            levelLabel, width - 16, rowHeight);
+        drawLabel(rgb, width, height, labels, levelLabel, 8,
+                  height - bottom + rowHeight, levelHeight, 255, 200, 112);
+        if (loopLabel[0]) {
+            drawLabel(rgb, width, height, labels, loopLabel,
+                      width - loopWidth - 8, 3, loopHeight, 104, 255, 144);
         }
     } catch (...) {
         rgb.clear();

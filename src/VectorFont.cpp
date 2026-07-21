@@ -1,7 +1,8 @@
 #include "VectorFont.h"
 
+#include <FL/fl_draw.H>
+
 #include <algorithm>
-#include <cctype>
 #include <cmath>
 #include <cstring>
 
@@ -79,11 +80,37 @@ struct Painter {
     }
 };
 
-void drawGlyph(Painter &painter, char glyph) {
+template <typename GlyphPainter>
+void drawGlyph(GlyphPainter &painter, char glyph) {
 #define L(x0,y0,x1,y1) painter.line(x0, y0, x1, y1)
 #define D(x,y) painter.dot(x, y)
-    switch (static_cast<unsigned char>(std::toupper(
-                static_cast<unsigned char>(glyph)))) {
+    switch (static_cast<unsigned char>(glyph)) {
+    case 'a': L(2,8,8,8); L(8,8,8,14); L(8,14,2,14); L(2,14,2,11); L(2,11,8,11); break;
+    case 'b': L(1,2,1,14); L(1,8,8,8); L(8,8,8,14); L(8,14,1,14); break;
+    case 'c': L(9,8,1,8); L(1,8,1,14); L(1,14,9,14); break;
+    case 'd': L(9,2,9,14); L(9,8,2,8); L(2,8,2,14); L(2,14,9,14); break;
+    case 'e': L(1,11,9,11); L(9,11,9,8); L(9,8,1,8); L(1,8,1,14); L(1,14,9,14); break;
+    case 'f': L(8,2,5,2); L(5,2,5,14); L(2,7,8,7); break;
+    case 'g': L(9,8,2,8); L(2,8,2,14); L(2,14,9,14); L(9,8,9,16); L(9,16,2,16); break;
+    case 'h': L(1,2,1,14); L(1,8,8,8); L(8,8,8,14); break;
+    case 'i': D(5,4); L(5,8,5,14); break;
+    case 'j': D(7,4); L(7,8,7,16); L(7,16,2,16); break;
+    case 'k': L(1,2,1,14); L(8,8,1,12); L(4,11,9,14); break;
+    case 'l': L(4,2,4,14); L(4,14,8,14); break;
+    case 'm': L(1,14,1,8); L(1,8,4,8); L(4,8,4,14); L(4,8,8,8); L(8,8,8,14); break;
+    case 'n': L(1,14,1,8); L(1,8,8,8); L(8,8,8,14); break;
+    case 'o': L(2,8,8,8); L(8,8,8,14); L(8,14,2,14); L(2,14,2,8); break;
+    case 'p': L(1,8,1,16); L(1,8,8,8); L(8,8,8,14); L(8,14,1,14); break;
+    case 'q': L(9,8,9,16); L(9,8,2,8); L(2,8,2,14); L(2,14,9,14); break;
+    case 'r': L(1,14,1,8); L(1,8,8,8); break;
+    case 's': L(9,8,1,8); L(1,8,1,11); L(1,11,9,11); L(9,11,9,14); L(9,14,1,14); break;
+    case 't': L(5,4,5,14); L(2,8,8,8); L(5,14,9,14); break;
+    case 'u': L(1,8,1,14); L(1,14,8,14); L(8,8,8,14); break;
+    case 'v': L(1,8,5,14); L(5,14,9,8); break;
+    case 'w': L(1,8,2,14); L(2,14,5,11); L(5,11,8,14); L(8,14,9,8); break;
+    case 'x': L(1,8,9,14); L(9,8,1,14); break;
+    case 'y': L(1,8,5,14); L(9,8,5,14); L(5,14,3,16); L(3,16,1,16); break;
+    case 'z': L(1,8,9,8); L(9,8,1,14); L(1,14,9,14); break;
     case 'A': L(1,14,1,6); L(1,6,5,2); L(5,2,9,6); L(9,6,9,14); L(1,9,9,9); break;
     case 'B': L(1,2,1,14); L(1,2,7,2); L(7,2,9,4); L(9,4,9,7); L(9,7,7,8); L(1,8,7,8); L(7,8,9,10); L(9,10,9,12); L(9,12,7,14); L(1,14,7,14); break;
     case 'C': L(9,2,1,2); L(1,2,1,14); L(1,14,9,14); break;
@@ -121,13 +148,25 @@ void drawGlyph(Painter &painter, char glyph) {
     case '8': L(1,2,9,2); L(9,2,9,14); L(9,14,1,14); L(1,14,1,2); L(1,8,9,8); break;
     case '9': L(9,8,1,8); L(1,8,1,2); L(1,2,9,2); L(9,2,9,14); L(9,14,1,14); break;
     case '.': D(5,13); break;
+    case ',': L(6,12,4,15); break;
     case ':': D(5,4); D(5,10); break;
+    case ';': D(5,4); L(6,10,4,15); break;
+    case '+': L(5,3,5,11); L(1,7,9,7); break;
     case '-': L(1,7,9,7); break;
     case '/': L(9,0,1,14); break;
+    case '\\': L(1,0,9,14); break;
     case '(': L(7,0,3,4); L(3,4,3,10); L(3,10,7,14); break;
     case ')': L(3,0,7,4); L(7,4,7,10); L(7,10,3,14); break;
+    case '[': L(8,0,3,0); L(3,0,3,14); L(3,14,8,14); break;
+    case ']': L(2,0,7,0); L(7,0,7,14); L(7,14,2,14); break;
     case '<': L(8,2,2,7); L(2,7,8,12); break;
     case '>': L(2,2,8,7); L(8,7,2,12); break;
+    case '=': L(1,5,9,5); L(1,9,9,9); break;
+    case '%': L(2,4,4,2); L(4,2,5,3); L(5,3,3,5); L(3,5,2,4); L(9,0,1,14); L(6,11,8,9); L(8,9,9,10); L(9,10,7,12); L(7,12,6,11); break;
+    case '_': L(1,14,9,14); break;
+    case '|': L(5,0,5,14); break;
+    case '\'': L(5,0,4,4); break;
+    case '"': L(3,0,3,4); L(7,0,7,4); break;
     case '^': L(1,8,5,3); L(5,3,9,8); break;
     case ' ': break;
     default: L(2,2,8,2); L(8,2,8,14); L(8,14,2,14); L(2,14,2,2); break;
@@ -135,6 +174,46 @@ void drawGlyph(Painter &painter, char glyph) {
 #undef D
 #undef L
 }
+
+struct FltkPainter {
+    float originX;
+    float originY;
+    float scale;
+    float thickness;
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+
+    void stroke(float x0, float y0, float x1, float y1, int width,
+                float brightness) {
+        fl_color(fl_rgb_color(
+            static_cast<uchar>(red * brightness),
+            static_cast<uchar>(green * brightness),
+            static_cast<uchar>(blue * brightness)));
+        fl_line_style(FL_SOLID, std::max(1, width));
+        fl_line(static_cast<int>(std::lround(x0)), static_cast<int>(std::lround(y0)),
+                static_cast<int>(std::lround(x1)), static_cast<int>(std::lround(y1)));
+    }
+
+    void line(float x0, float y0, float x1, float y1) {
+        x0 = originX + x0 * scale;
+        y0 = originY + y0 * scale;
+        x1 = originX + x1 * scale;
+        y1 = originY + y1 * scale;
+        stroke(x0, y0, x1, y1, static_cast<int>(thickness * 3.2f), 0.18f);
+        stroke(x0, y0, x1, y1, static_cast<int>(thickness * 1.8f), 0.42f);
+        stroke(x0, y0, x1, y1, static_cast<int>(thickness), 1.0f);
+    }
+
+    void dot(float x, float y) {
+        const float px = originX + x * scale;
+        const float py = originY + y * scale;
+        const int radius = std::max(1, static_cast<int>(std::lround(thickness)));
+        fl_color(fl_rgb_color(red, green, blue));
+        fl_pie(static_cast<int>(px) - radius, static_cast<int>(py) - radius,
+               radius * 2 + 1, radius * 2 + 1, 0, 360);
+    }
+};
 
 } // namespace
 
@@ -158,4 +237,19 @@ void repl_draw_vector_text_rgb(std::vector<uint8_t> &rgb, int width, int height,
         painter.originX += kAdvance * scale;
         if (painter.originX >= width) break;
     }
+}
+
+void repl_draw_vector_text_fltk(const char *text, float x, float y,
+                                float cellHeight, uint8_t red,
+                                uint8_t green, uint8_t blue) {
+    if (!text || !*text || cellHeight <= 0.0f) return;
+    const float scale = cellHeight * kRenderScale / kGlyphHeight;
+    FltkPainter painter{x, y + (cellHeight - kGlyphHeight * scale) * 0.5f,
+                        scale, std::max(1.0f, scale * 0.64f),
+                        red, green, blue};
+    for (const char *cursor = text; *cursor; ++cursor) {
+        drawGlyph(painter, *cursor);
+        painter.originX += kAdvance * scale;
+    }
+    fl_line_style(0);
 }

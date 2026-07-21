@@ -51,6 +51,7 @@ add_library(replfltk STATIC
     src/repl_api.cpp src/TerminalView.cpp src/TerminalView.h
     src/Theme.cpp src/Theme.h
     src/Tokenize.cpp src/Tokenize.h src/VectorFont.cpp src/VectorFont.h
+    src/AudioMetrics.cpp src/AudioMetrics.h
     src/Spectrogram.cpp src/Spectrogram.h src/Waveform.cpp src/Waveform.h
     src/VoiceTopology.cpp src/VoiceTopology.h
     src/bitmap_win.cpp src/panel_dsl.cpp
@@ -216,6 +217,11 @@ if(BUILD_TESTING)
     target_include_directories(repl_voice_topology_test PRIVATE src)
     target_link_libraries(repl_voice_topology_test PRIVATE replfltk pikchr)
     add_test(NAME repl_voice_topology_test COMMAND repl_voice_topology_test)
+
+    add_executable(repl_vector_font_test tests/vector_font_test.cpp)
+    target_include_directories(repl_vector_font_test PRIVATE src)
+    target_link_libraries(repl_vector_font_test PRIVATE replfltk)
+    add_test(NAME repl_vector_font_test COMMAND repl_vector_font_test)
 endif()
 
 message(STATUS "fltk-repl configured successfully!")
