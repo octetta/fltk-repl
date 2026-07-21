@@ -36,6 +36,14 @@ struct ParsedItem {
     std::vector<std::string> options; /* choice only */
     std::string text;          /* label only */
     int weight = 1;
+
+    /* Optional initial value, set via a trailing =value modifier in the
+     * DSL. Resolved and range/membership-checked at parse time so build
+     * time never has to re-validate. */
+    bool has_default = false;
+    double default_num = 0;    /* slider / field */
+    bool default_bool = false; /* toggle */
+    std::string default_str;   /* choice */
 };
 
 struct ParsedRow {
@@ -79,13 +87,31 @@ std::vector<std::string> tokenize(const std::string &line) {
     return out;
 }
 
-int parse_weight(std::vector<std::string> &toks) {
-    if (!toks.empty() && toks.back().size() > 1 && toks.back()[0] == '@') {
-        int w = atoi(toks.back().c_str() + 1);
-        toks.pop_back();
-        return w > 0 ? w : 1;
+/* Strips trailing @weight and/or =default modifiers off the end of a
+ * token list, in either order (e.g. both "... =1200 @2" and "... @2 =1200"
+ * are accepted). What remains in `toks` is just the statement's required
+ * positional arguments. */
+void pop_modifiers(std::vector<std::string> &toks, int &weight,
+                    bool &has_default, std::string &default_tok) {
+    weight = 1;
+    has_default = false;
+    default_tok.clear();
+    while (!toks.empty()) {
+        const std::string &last = toks.back();
+        if (last.size() > 1 && last[0] == '@') {
+            int w = atoi(last.c_str() + 1);
+            weight = w > 0 ? w : 1;
+            toks.pop_back();
+            continue;
+        }
+        if (last.size() > 1 && last[0] == '=') {
+            default_tok = last.substr(1);
+            has_default = true;
+            toks.pop_back();
+            continue;
+        }
+        break;
     }
-    return 1;
 }
 
 /* ---------------------------------------------------------------------
@@ -127,10 +153,11 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
             pw.rows.push_back(current_row);
             in_row = false;
         } else if (kw == "slider" || kw == "field") {
-            /* name min max [unit] "template" [@weight] */
+            /* name min max [unit] "template" [=default] [@weight] */
             if (t.size() < 5) { err = "line " + std::to_string(lineno) + ": " + kw + " needs name min max [unit] \"template\""; return false; }
             std::vector<std::string> rest(t.begin() + 1, t.end());
-            int weight = parse_weight(rest);
+            int weight; bool has_default; std::string default_tok;
+            pop_modifiers(rest, weight, has_default, default_tok);
             ParsedItem it;
             it.type = (kw == "slider") ? IT_SLIDER : IT_FIELD;
             it.name = rest[0];
@@ -140,24 +167,48 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
             else if (rest.size() == 4) { it.tmpl = rest[3]; }
             else { err = "line " + std::to_string(lineno) + ": too many tokens for " + kw; return false; }
             it.weight = weight;
+            if (has_default) {
+                double dv = atof(default_tok.c_str());
+                if (dv < it.min || dv > it.max) {
+                    err = "line " + std::to_string(lineno) + ": default " + default_tok + " is outside " + kw + "'s range [" + rest[1] + ", " + rest[2] + "]";
+                    return false;
+                }
+                it.default_num = dv;
+                it.has_default = true;
+            }
             emit_item(it);
         } else if (kw == "toggle" || kw == "button") {
-            /* name "template" [@weight] */
+            /* toggle name "template" [=default] [@weight]
+             * button name "template" [@weight]           (no default) */
             if (t.size() < 3) { err = "line " + std::to_string(lineno) + ": " + kw + " needs name \"template\""; return false; }
             std::vector<std::string> rest(t.begin() + 1, t.end());
-            int weight = parse_weight(rest);
+            int weight; bool has_default; std::string default_tok;
+            pop_modifiers(rest, weight, has_default, default_tok);
             if (rest.size() != 2) { err = "line " + std::to_string(lineno) + ": " + kw + " needs exactly name \"template\""; return false; }
             ParsedItem it;
             it.type = (kw == "toggle") ? IT_TOGGLE : IT_BUTTON;
             it.name = rest[0];
             it.tmpl = rest[1];
             it.weight = weight;
+            if (has_default) {
+                if (kw == "button") {
+                    err = "line " + std::to_string(lineno) + ": button does not take a default value";
+                    return false;
+                }
+                std::string d = default_tok;
+                for (size_t ci = 0; ci < d.size(); ++ci) d[ci] = (char)tolower((unsigned char)d[ci]);
+                if (d == "1" || d == "on" || d == "true") it.default_bool = true;
+                else if (d == "0" || d == "off" || d == "false") it.default_bool = false;
+                else { err = "line " + std::to_string(lineno) + ": toggle default must be 0/1/on/off, got '" + default_tok + "'"; return false; }
+                it.has_default = true;
+            }
             emit_item(it);
         } else if (kw == "choice") {
-            /* name "opt opt opt" "template" [@weight] */
+            /* name "opt opt opt" "template" [=default] [@weight] */
             if (t.size() < 4) { err = "line " + std::to_string(lineno) + ": choice needs name \"options\" \"template\""; return false; }
             std::vector<std::string> rest(t.begin() + 1, t.end());
-            int weight = parse_weight(rest);
+            int weight; bool has_default; std::string default_tok;
+            pop_modifiers(rest, weight, has_default, default_tok);
             if (rest.size() != 3) { err = "line " + std::to_string(lineno) + ": choice needs exactly name \"options\" \"template\""; return false; }
             ParsedItem it;
             it.type = IT_CHOICE;
@@ -170,11 +221,21 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
             it.tmpl = rest[2];
             it.weight = weight;
             if (it.options.empty()) { err = "line " + std::to_string(lineno) + ": choice has no options"; return false; }
+            if (has_default) {
+                bool found = false;
+                for (size_t oi = 0; oi < it.options.size(); ++oi)
+                    if (it.options[oi] == default_tok) { found = true; break; }
+                if (!found) { err = "line " + std::to_string(lineno) + ": choice default '" + default_tok + "' is not one of the listed options"; return false; }
+                it.default_str = default_tok;
+                it.has_default = true;
+            }
             emit_item(it);
         } else if (kw == "label") {
             if (t.size() < 2) { err = "line " + std::to_string(lineno) + ": label needs \"text\""; return false; }
             std::vector<std::string> rest(t.begin() + 1, t.end());
-            int weight = parse_weight(rest);
+            int weight; bool has_default; std::string default_tok;
+            pop_modifiers(rest, weight, has_default, default_tok);
+            if (has_default) { err = "line " + std::to_string(lineno) + ": label does not take a default value"; return false; }
             ParsedItem it;
             it.type = IT_LABEL;
             it.text = rest[0];
@@ -297,6 +358,43 @@ int row_height(const ParsedRow &row) {
     return h;
 }
 
+/* Splits `content_w` horizontally across items with the given weights,
+ * returning each item's (x, width). Used both when widgets are first
+ * built and again on every window resize, so the two never drift apart. */
+std::vector<std::pair<int, int> > compute_cols(int content_w, const std::vector<int> &weights) {
+    std::vector<std::pair<int, int> > out;
+    int n = (int)weights.size();
+    int weight_sum = 0;
+    for (int i = 0; i < n; ++i) weight_sum += weights[i];
+    int gaps_w = GAP_X * (n - 1 > 0 ? n - 1 : 0);
+    int avail_w = content_w - gaps_w;
+
+    int x = MARGIN;
+    for (int i = 0; i < n; ++i) {
+        int iw = (weight_sum > 0) ? (avail_w * weights[i] / weight_sum) : avail_w;
+        if (i + 1 == n) iw = content_w - (x - MARGIN); /* last item absorbs rounding */
+        out.push_back(std::make_pair(x, iw));
+        x += iw + GAP_X;
+    }
+    return out;
+}
+
+/* ---------------------------------------------------------------------
+ * Resize-time layout bookkeeping: after widgets are built, one LayoutItem
+ * per control records its label/control widget pointers and weight so a
+ * window resize can reposition them without re-parsing the DSL.
+ * ------------------------------------------------------------------- */
+
+struct LayoutItem {
+    Fl_Widget *label = NULL;   /* may be NULL (toggle/button/label have none) */
+    Fl_Widget *control = NULL; /* the widget itself; for a plain label item, this is the Fl_Box */
+    int weight = 1;
+};
+
+struct LayoutRow {
+    std::vector<LayoutItem> items;
+};
+
 } // namespace
 
 /* ---------------------------------------------------------------------
@@ -307,6 +405,7 @@ struct panel_win {
     Fl_Double_Window *win;
     Fl_Group *content;                       /* holds all built widgets */
     std::vector<ItemBinding *> bindings;      /* owned, freed on rebuild/destroy */
+    std::vector<LayoutRow> layout;            /* rebuilt every build_widgets() call */
 };
 
 namespace {
@@ -316,12 +415,67 @@ void clear_bindings(panel_win_t *pw) {
     pw->bindings.clear();
 }
 
+/* Reflows every widget horizontally to match a new content width W,
+ * using the same compute_cols() split used at build time. Row heights
+ * and y-positions are left untouched -- only x/width track the window,
+ * which is what makes sliders/fields "fill out" as the window widens.
+ * If you want rows to also grow/shrink vertically with the window,
+ * that's a bigger change (redistributing row heights), noted here
+ * rather than attempted, since it's a real design decision (should
+ * sliders get taller? should extra space go below the last row?)
+ * rather than a mechanical one. */
+void reflow_panel(panel_win_t *pw, int W, int /*H*/) {
+    int content_w = W - 2 * MARGIN;
+    if (content_w < 1) content_w = 1;
+
+    for (size_t ri = 0; ri < pw->layout.size(); ++ri) {
+        LayoutRow &row = pw->layout[ri];
+        std::vector<int> weights;
+        for (size_t i = 0; i < row.items.size(); ++i) weights.push_back(row.items[i].weight);
+        std::vector<std::pair<int, int> > cols = compute_cols(content_w, weights);
+
+        for (size_t i = 0; i < row.items.size(); ++i) {
+            int x = cols[i].first;
+            int iw = cols[i].second;
+            LayoutItem &it = row.items[i];
+            if (it.label) it.label->resize(x, it.label->y(), iw, it.label->h());
+            if (it.control) it.control->resize(x, it.control->y(), iw, it.control->h());
+        }
+    }
+}
+
+/* A window that reflows its panel content horizontally whenever the user
+ * (or the WM) resizes it, instead of relying on FLTK's default
+ * proportional-scaling Fl_Group::resize() behavior. `owner` is set right
+ * after construction, once the panel_win_t it belongs to exists. */
+class PanelWindow : public Fl_Double_Window {
+public:
+    PanelWindow(int W, int H, const char *title)
+        : Fl_Double_Window(W, H, title), owner_(NULL) {}
+
+    void set_owner(panel_win_t *owner) { owner_ = owner; }
+
+    void resize(int X, int Y, int W, int H) override {
+        Fl_Double_Window::resize(X, Y, W, H);
+        if (!owner_) return;
+        /* Keep content filling the window, but bypass Fl_Group's own
+         * resize() (which would proportionally rescale children using
+         * its own heuristics) -- we do that ourselves in reflow_panel(). */
+        if (owner_->content) owner_->content->Fl_Widget::resize(0, 0, W, H);
+        reflow_panel(owner_, W, H);
+    }
+
+private:
+    panel_win_t *owner_;
+};
+
 /* Builds widgets for `pwin` into pw->content, sized to pw->win's current
  * width, growing pw->win's height if the content doesn't fit. Returns the
  * total content height used. */
 int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
     pw->content->clear();
     clear_bindings(pw);
+    pw->layout.clear();
 
     int content_w = pwin.width - 2 * MARGIN;
     int y = MARGIN;
@@ -330,20 +484,16 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
         const ParsedRow &row = pwin.rows[ri];
         int rh = row_height(row);
 
-        int weight_sum = 0;
-        for (size_t i = 0; i < row.items.size(); ++i) weight_sum += row.items[i].weight;
-        int n = (int)row.items.size();
-        int gaps_w = GAP_X * (n - 1 > 0 ? n - 1 : 0);
-        int avail_w = content_w - gaps_w;
+        std::vector<int> weights;
+        for (size_t i = 0; i < row.items.size(); ++i) weights.push_back(row.items[i].weight);
+        std::vector<std::pair<int, int> > cols = compute_cols(content_w, weights);
 
-        int x = MARGIN;
+        LayoutRow layout_row;
+
         for (size_t i = 0; i < row.items.size(); ++i) {
             const ParsedItem &it = row.items[i];
-            int iw = (weight_sum > 0) ? (avail_w * it.weight / weight_sum) : avail_w;
-            /* last item absorbs rounding remainder */
-            if (i + 1 == row.items.size()) {
-                iw = content_w - (x - MARGIN) - 0;
-            }
+            int x = cols[i].first;
+            int iw = cols[i].second;
 
             ItemBinding *bind = NULL;
             if (it.type != IT_LABEL) {
@@ -352,6 +502,9 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                 bind->options = it.options;
                 pw->bindings.push_back(bind);
             }
+
+            LayoutItem litem;
+            litem.weight = it.weight;
 
             switch (it.type) {
                 case IT_SLIDER: {
@@ -362,11 +515,13 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     Fl_Slider *s = new Fl_Slider(x, y + 16, iw, rh - 16, "");
                     s->type(FL_HOR_NICE_SLIDER);
                     s->bounds(it.min, it.max);
-                    s->value((it.min + it.max) / 2.0);
+                    s->value(it.has_default ? it.default_num : (it.min + it.max) / 2.0);
                     s->callback(slider_cb, bind);
                     s->when(FL_WHEN_RELEASE);
                     pw->content->add(lbl);
                     pw->content->add(s);
+                    litem.label = lbl;
+                    litem.control = s;
                     break;
                 }
                 case IT_FIELD: {
@@ -375,19 +530,23 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     lbl->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
                     Fl_Int_Input *f = new Fl_Int_Input(x, y + 16, iw, rh - 16, "");
                     char defbuf[32];
-                    snprintf(defbuf, sizeof defbuf, "%d", (int)it.min);
+                    snprintf(defbuf, sizeof defbuf, "%d", it.has_default ? (int)it.default_num : (int)it.min);
                     f->value(defbuf);
                     f->callback(field_cb, bind);
                     f->when(FL_WHEN_ENTER_KEY | FL_WHEN_RELEASE);
                     pw->content->add(lbl);
                     pw->content->add(f);
+                    litem.label = lbl;
+                    litem.control = f;
                     break;
                 }
                 case IT_TOGGLE: {
                     Fl_Check_Button *c = new Fl_Check_Button(x, y, iw, rh, "");
                     c->copy_label(it.name.c_str());
+                    c->value(it.has_default && it.default_bool ? 1 : 0);
                     c->callback(toggle_cb, bind);
                     pw->content->add(c);
+                    litem.control = c;
                     break;
                 }
                 case IT_BUTTON: {
@@ -395,6 +554,7 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     b->copy_label(it.name.c_str());
                     b->callback(button_cb, bind);
                     pw->content->add(b);
+                    litem.control = b;
                     break;
                 }
                 case IT_CHOICE: {
@@ -402,12 +562,17 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     lbl->copy_label(it.name.c_str());
                     lbl->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
                     Fl_Choice *ch = new Fl_Choice(x, y + 16, iw, rh - 16, "");
-                    for (size_t oi = 0; oi < it.options.size(); ++oi)
+                    int default_idx = 0;
+                    for (size_t oi = 0; oi < it.options.size(); ++oi) {
                         ch->add(it.options[oi].c_str());
-                    ch->value(0);
+                        if (it.has_default && it.options[oi] == it.default_str) default_idx = (int)oi;
+                    }
+                    ch->value(default_idx);
                     ch->callback(choice_cb, bind);
                     pw->content->add(lbl);
                     pw->content->add(ch);
+                    litem.label = lbl;
+                    litem.control = ch;
                     break;
                 }
                 case IT_LABEL: {
@@ -416,13 +581,15 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     lbl->labelfont(FL_HELVETICA_BOLD);
                     lbl->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
                     pw->content->add(lbl);
+                    litem.control = lbl;
                     break;
                 }
             }
 
-            x += iw + GAP_X;
+            layout_row.items.push_back(litem);
         }
 
+        pw->layout.push_back(layout_row);
         y += rh + GAP_Y;
     }
 
@@ -444,9 +611,11 @@ void panel_set_command_handler(panel_command_fn fn, void *user_data) {
 
 static panel_win_t *build_from_parsed(const ParsedWindow &pwin) {
     panel_win_t *pw = new panel_win();
-    pw->win = new Fl_Double_Window(pwin.width, pwin.height, pwin.title.c_str());
+    PanelWindow *pwn = new PanelWindow(pwin.width, pwin.height, pwin.title.c_str());
+    pw->win = pwn;
     pw->content = new Fl_Group(0, 0, pwin.width, pwin.height);
     pw->win->add(pw->content);
+    pwn->set_owner(pw); /* now safe: pw->win/pw->content are both live */
 
     int used_h = build_widgets(pw, pwin);
     if (used_h > pwin.height) {
@@ -457,6 +626,11 @@ static panel_win_t *build_from_parsed(const ParsedWindow &pwin) {
     pw->content->end();
     pw->win->end();
     pw->win->callback([](Fl_Widget *w, void *) { w->hide(); });
+
+    /* Floor so shrinking the window can't overlap/crush controls; no
+     * upper bound (0 = unlimited) so it can grow freely and widgets
+     * track the new width via PanelWindow::resize() -> reflow_panel(). */
+    pw->win->size_range(2 * MARGIN + 80, 80, 0, 0);
     return pw;
 }
 
