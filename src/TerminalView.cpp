@@ -1,5 +1,6 @@
 #include "TerminalView.h"
 #include <FL/fl_ask.H>
+#include <FL/Fl_Menu_Item.H>
 #include <cstring>
 #include <cctype>
 
@@ -156,6 +157,42 @@ void TerminalView::moveHistory(int direction) {
 }
 
 int TerminalView::handle(int event) {
+    // Right-click context menu (cross-platform: Linux, macOS, Windows)
+    if (event == FL_PUSH && Fl::event_button() == FL_RIGHT_MOUSE) {
+        bool hasSelection = buffer_->selected();
+
+        Fl_Menu_Item popup_menu[] = {
+            { "Copy",       0, nullptr, nullptr, hasSelection ? 0 : FL_MENU_INACTIVE },
+            { "Paste",      0, nullptr, nullptr, 0 },
+            { "Clear Line", 0, nullptr, nullptr, 0 },
+            { 0 } // Sentinel
+        };
+
+        const Fl_Menu_Item* m = popup_menu->popup(Fl::event_x(), Fl::event_y(), nullptr, nullptr, nullptr);
+
+        if (m) {
+            std::string label = m->label() ? m->label() : "";
+            if (label == "Copy" && hasSelection) {
+                char* text = buffer_->selection_text();
+                if (text) {
+                    Fl::copy(text, (int)strlen(text), 1); // Clipboard
+                    Fl::copy(text, (int)strlen(text), 0); // Primary Selection
+                    free(text);
+                }
+                buffer_->unselect();
+                insert_position(buffer_->length());
+                show_insert_position();
+                redraw();
+            } else if (label == "Paste") {
+                snapCursorToEndIfBeforeInput();
+                Fl::paste(*this, 1);
+            } else if (label == "Clear Line") {
+                replaceLiveText("");
+            }
+        }
+        return 1;
+    }
+
     if (event == FL_KEYBOARD) {
         int key = Fl::event_key();
         int state = Fl::event_state();
