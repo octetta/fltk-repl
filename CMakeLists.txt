@@ -7,6 +7,9 @@ if(NOT FLTK_REPL_VERSION MATCHES "^[0-9]+\.[0-9]+\.[0-9]+$")
 endif()
 project(fltk_repl VERSION ${FLTK_REPL_VERSION} LANGUAGES C CXX)
 
+string(TIMESTAMP FLTK_REPL_BUILD_DATE "%Y-%m-%dT%H:%M:%SZ" UTC)
+set(PIKCHR_VERSION "1.0.0")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 99)
@@ -33,6 +36,15 @@ set(REPL_FLTK_TARGET fltk::images)
 message(STATUS "fltk-repl: FLTK ${FLTK_VERSION} with SVG support")
 
 # ---------------------------------------------------------------------
+# Pikchr (vendored generated C source)
+# ---------------------------------------------------------------------
+add_library(pikchr STATIC third_party/pikchr/pikchr.c)
+target_include_directories(pikchr PUBLIC third_party/pikchr)
+if(NOT MSVC)
+    target_link_libraries(pikchr PUBLIC m)
+endif()
+
+# ---------------------------------------------------------------------
 # REPL library
 # ---------------------------------------------------------------------
 add_library(replfltk STATIC
@@ -40,6 +52,7 @@ add_library(replfltk STATIC
     src/Theme.cpp src/Theme.h
     src/Tokenize.cpp src/Tokenize.h src/VectorFont.cpp src/VectorFont.h
     src/Spectrogram.cpp src/Spectrogram.h src/Waveform.cpp src/Waveform.h
+    src/VoiceTopology.cpp src/VoiceTopology.h
     src/bitmap_win.cpp src/panel_dsl.cpp
     include/repl/bitmap_win.h include/repl/panel_dsl.h
 )
@@ -118,11 +131,16 @@ if(SKRED_BUILD_REPL)
         examples/skred/main.c
         examples/skred/SpectrogramBridge.cpp
         examples/skred/SpectrogramBridge.h
+        examples/skred/TopologyWindow.cpp
+        examples/skred/TopologyWindow.h
     )
-    target_include_directories(skred_repl PRIVATE ${SKRED_INCLUDE_DIR})
+    target_include_directories(skred_repl PRIVATE ${SKRED_INCLUDE_DIR} src)
     target_compile_definitions(skred_repl PRIVATE
-        FLTK_REPL_VERSION="${PROJECT_VERSION}")
-    target_link_libraries(skred_repl PRIVATE replfltk ${SKRED_API_LIBRARY})
+        FLTK_REPL_VERSION="${PROJECT_VERSION}"
+        FLTK_REPL_BUILD_DATE="${FLTK_REPL_BUILD_DATE}"
+        FLTK_REPL_FLTK_VERSION="${FLTK_VERSION}"
+        FLTK_REPL_PIKCHR_VERSION="${PIKCHR_VERSION}")
+    target_link_libraries(skred_repl PRIVATE replfltk pikchr ${SKRED_API_LIBRARY})
     set_target_properties(skred_repl PROPERTIES
         LINKER_LANGUAGE CXX
         OUTPUT_NAME "skrepl"
@@ -193,6 +211,11 @@ if(BUILD_TESTING)
     target_include_directories(repl_waveform_test PRIVATE src)
     target_link_libraries(repl_waveform_test PRIVATE replfltk)
     add_test(NAME repl_waveform_test COMMAND repl_waveform_test)
+
+    add_executable(repl_voice_topology_test tests/voice_topology_test.cpp)
+    target_include_directories(repl_voice_topology_test PRIVATE src)
+    target_link_libraries(repl_voice_topology_test PRIVATE replfltk pikchr)
+    add_test(NAME repl_voice_topology_test COMMAND repl_voice_topology_test)
 endif()
 
 message(STATUS "fltk-repl configured successfully!")

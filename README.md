@@ -13,6 +13,23 @@ operations, light and dark themes, configurable fonts, and native FLTK
 behavior on Linux, macOS, and Windows. The library also includes a bitmap
 output window and a small DSL for building Skred control panels.
 
+## Credits and project links
+
+skrepl is built with these open-source projects:
+
+- [FLTK](https://www.fltk.org/) 1.4.5 provides the cross-platform GUI and SVG rendering.
+- [miniaudio](https://miniaud.io/) 0.11.25 provides audio I/O through the linked Skred 0.52.0 library.
+- [Pikchr](https://pikchr.org/) 1.0.0 renders voice-topology diagrams from its vendored generated C source.
+
+Project and Octetta pages:
+
+- [GitHub repository](https://github.com/octetta/fltk-repl)
+- [Octetta on YouTube](https://www.youtube.com/@octetta)
+- [Octetta on LinkedIn](https://www.linkedin.com/in/octetta)
+
+Startup and `--check` print the configured FLTK and Pikchr versions, the
+linked miniaudio runtime version, these URLs, and the UTC build date.
+
 ## Build
 
 The default build requires CMake 3.16 or newer, a C/C++ toolchain, `curl`,
@@ -110,6 +127,9 @@ clear
 theme light|dark
 font ["font name" [size]]
 bitmap [show|hide|clear]
+spectrogram wave <slot> | record [-1|0|1]
+waveform wave <slot> | record [-1|0|1]
+topology <voice> [depth]
 panel load <file.pnl>
 panel reload
 panel hide
@@ -184,20 +204,31 @@ bitmap API.
 
 All bitmap and panel API calls must run on the FLTK main thread.
 
-## SVG and Pikchr readiness
+## Voice topology diagrams
 
-The build enables `Fl_SVG_Image` and verifies its in-memory constructor with
-the `repl_svg_smoke` CTest. This matches Pikchr's integration model, where
-`pikchr()` returns an allocated SVG string:
+Pikchr 1.0.0 is vendored under `third_party/pikchr/`. Display the link graph
+implied by Skred's `/vg` command in a dedicated, resizable window with:
+
+```text
+topology 8
+topology 8 4
+/vg 8
+```
+
+The optional depth limits traversal; zero or omission walks the complete
+reachable graph. Entering a valid `/vg` command retains its normal text output
+and also refreshes the diagram. The front end requests Skred's versioned line protocol,
+groups multiple relationships between the same voices, and labels pitch, gate,
+amplitude, frequency, pan, phase, and ring modulation links. The root voice is
+highlighted. FLTK renders Pikchr's SVG geometry, while the view overlays its
+`<text>` labels because NanoSVG does not render SVG text.
+
+CTest covers graph conversion and passes the generated source through the
+vendored renderer in addition to the existing SVG image smoke test:
 
 ```sh
 ctest --test-dir build --output-on-failure
 ```
-
-FLTK uses NanoSVG and does not render SVG `<text>`, `<image>`, or `<use>`
-elements. Pikchr normally emits labels as `<text>`, so a future Pikchr diagram
-window will need an additional label strategy; passing its SVG directly to
-`Fl_SVG_Image` would otherwise display shapes and lines without their text.
 
 ## Integration overview
 

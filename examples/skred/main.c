@@ -9,6 +9,7 @@
 #include "repl/bitmap_win.h"
 #include "repl/panel_dsl.h"
 #include "SpectrogramBridge.h"
+#include "TopologyWindow.h"
 #include <skred/api.h>
 
 #include <stdio.h>
@@ -18,6 +19,23 @@
 #ifndef FLTK_REPL_VERSION
 #define FLTK_REPL_VERSION "unknown"
 #endif
+#ifndef FLTK_REPL_BUILD_DATE
+#define FLTK_REPL_BUILD_DATE "unknown"
+#endif
+#ifndef FLTK_REPL_FLTK_VERSION
+#define FLTK_REPL_FLTK_VERSION "unknown"
+#endif
+#ifndef FLTK_REPL_PIKCHR_VERSION
+#define FLTK_REPL_PIKCHR_VERSION "unknown"
+#endif
+
+#define SKREPL_GITHUB_URL "https://github.com/octetta/fltk-repl"
+#define OCTETTA_YOUTUBE_URL "https://www.youtube.com/@octetta"
+#define OCTETTA_LINKEDIN_URL "https://www.linkedin.com/in/octetta"
+
+/* miniaudio is part of the linked Skred library and exports its runtime
+ * version even though its full implementation header is not packaged. */
+extern const char *ma_version_string(void);
 
 typedef struct app_state {
     repl_ctx *repl;
@@ -60,6 +78,37 @@ static int parse_int(const char *option, const char *text, int *out) {
 static void print_skred_log(app_state *app) {
     char *log = skred_log();
     if (log && *log) repl_print(app->repl, log);
+}
+
+static const char *miniaudio_version(void) {
+    const char *version = ma_version_string();
+    return version && *version ? version : "unknown";
+}
+
+static void print_release_info_stdout(void) {
+    printf("skrepl %s\n", FLTK_REPL_VERSION);
+    printf("Built %s\n", FLTK_REPL_BUILD_DATE);
+    printf("Skred %s\n", skred_version());
+    printf("FLTK %s\n", FLTK_REPL_FLTK_VERSION);
+    printf("miniaudio %s\n", miniaudio_version());
+    printf("Pikchr %s\n", FLTK_REPL_PIKCHR_VERSION);
+    printf("GitHub: " SKREPL_GITHUB_URL "\n");
+    printf("YouTube: " OCTETTA_YOUTUBE_URL "\n");
+    printf("LinkedIn: " OCTETTA_LINKEDIN_URL "\n");
+    printf("%s\n", skred_features());
+}
+
+static void print_release_info_repl(app_state *app) {
+    repl_printf(app->repl, "skrepl %s\n", FLTK_REPL_VERSION);
+    repl_printf(app->repl, "Built %s\n", FLTK_REPL_BUILD_DATE);
+    repl_printf(app->repl, "Skred %s\n", skred_version());
+    repl_printf(app->repl, "FLTK %s\n", FLTK_REPL_FLTK_VERSION);
+    repl_printf(app->repl, "miniaudio %s\n", miniaudio_version());
+    repl_printf(app->repl, "Pikchr %s\n", FLTK_REPL_PIKCHR_VERSION);
+    repl_println(app->repl, "GitHub: " SKREPL_GITHUB_URL);
+    repl_println(app->repl, "YouTube: " OCTETTA_YOUTUBE_URL);
+    repl_println(app->repl, "LinkedIn: " OCTETTA_LINKEDIN_URL);
+    repl_printf(app->repl, "%s\n", skred_features());
 }
 
 static void skred_line(const char *line, void *userdata) {
@@ -157,6 +206,51 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
         return;
     }
 
+    if (strcmp(cmd, "topology") == 0) {
+        int voice = -1;
+        int depth = 0;
+        char extra;
+        char error[256];
+        int parsed = n >= 2 ? sscanf(arg, "%d %d %c", &voice, &depth, &extra) : 0;
+        if ((parsed == 1 || parsed == 2) && voice >= 0 && depth >= 0) {
+            if (topology_show_voice(voice, depth, error, sizeof(error)) != 0)
+                repl_printf(app->repl, "Topology failed: %s\n", error);
+            return;
+        }
+        repl_println(app->repl, "usage: topology <voice> [depth]");
+        return;
+    }
+
+    if (strcmp(cmd, "/vg") == 0) {
+        int voice = -1;
+        int format = 0;
+        int depth = 0;
+        char extra;
+        char error[256];
+        int parsed = 0;
+        if (n >= 2 &&
+            sscanf(arg, "%d , %d , %d %c", &voice, &format, &depth, &extra) == 3) {
+            parsed = 3;
+        } else {
+            voice = -1; format = 0; depth = 0;
+            if (n >= 2 &&
+                sscanf(arg, "%d , %d %c", &voice, &format, &extra) == 2) {
+                parsed = 2;
+            } else {
+                voice = -1; format = 0;
+                if (n >= 2 && sscanf(arg, "%d %c", &voice, &extra) == 1)
+                    parsed = 1;
+            }
+        }
+        skred_line(line, userdata);
+        if (parsed >= 1 && parsed <= 3 && voice >= 0 &&
+            (format == 0 || format == 1) && depth >= 0 &&
+            topology_show_voice(voice, depth, error, sizeof(error)) != 0) {
+            repl_printf(app->repl, "Topology failed: %s\n", error);
+        }
+        return;
+    }
+
     if (strcmp(cmd, "panel") == 0) {
         static panel_win_t *pw = NULL;
         static char last_path[512] = "controls.pnl";
@@ -243,6 +337,7 @@ static void gui_help(int argc, char **argv, void *userdata) {
         "  bitmap [show|hide|clear] graphics output window\n"
         "  spectrogram wave <slot> | record [-1|0|1]\n"
         "  waveform wave <slot> | record [-1|0|1]\n"
+        "  topology <voice> [depth] show /vg voice topology\n"
         "  panel load <file.pnl> | reload | hide\n"
         "  boot [voices N] [frames N] [port N]   restart Skred\n"
         "  quit / exit              stop everything\n"
@@ -255,6 +350,7 @@ static void cmd_quit(int argc, char **argv, void *userdata) {
     (void)argc;
     (void)argv;
     skred_spectrogram_unbind();
+    topology_hide();
     bitmap_win_hide_all();
     repl_quit(app->repl);
 }
@@ -326,8 +422,7 @@ int main(int argc, char **argv) {
     }
 
     if (check_only) {
-        printf("skrepl %s\n", FLTK_REPL_VERSION);
-        printf("Skred %s\n%s\n", skred_version(), skred_features());
+        print_release_info_stdout();
         return 0;
     }
 
@@ -353,8 +448,7 @@ int main(int argc, char **argv) {
     repl_set_fallback_handler(app.repl, bitmap_panel_handler, &app);
     panel_set_command_handler(panel_to_skred, NULL);
 
-    repl_printf(app.repl, "skrepl %s\n", FLTK_REPL_VERSION);
-    repl_printf(app.repl, "Skred %s\n%s\n", skred_version(), skred_features());
+    print_release_info_repl(&app);
     repl_printf(app.repl, "frames/callback %u; voices %u; UDP port %d\n",
                 frames, voices, port);
 
@@ -378,6 +472,7 @@ int main(int argc, char **argv) {
 
     i = repl_run(app.repl);
     skred_spectrogram_unbind();
+    topology_hide();
     skred_control_dispatch_stop();
     skred_stop();
     repl_destroy(app.repl);
