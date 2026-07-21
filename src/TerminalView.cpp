@@ -1,6 +1,7 @@
 #include "TerminalView.h"
 #include <FL/fl_ask.H>
 #include <cstring>
+#include <cctype>
 
 namespace {
 
@@ -157,9 +158,10 @@ void TerminalView::moveHistory(int direction) {
 int TerminalView::handle(int event) {
     if (event == FL_KEYBOARD) {
         int key = Fl::event_key();
+        int state = Fl::event_state();
 
         // Handle Ctrl+C / Cmd+C: Copy text, clear selection, and snap cursor back to prompt
-        if ((Fl::event_state() & (FL_CTRL | FL_COMMAND)) && (key == 'c' || key == 'C')) {
+        if ((state & (FL_CTRL | FL_COMMAND)) && (key == 'c' || key == 'C')) {
             if (buffer_->selected()) {
                 char* text = buffer_->selection_text();
                 if (text) {
@@ -172,6 +174,71 @@ int TerminalView::handle(int event) {
             insert_position(buffer_->length());
             show_insert_position();
             redraw();
+            return 1;
+        }
+
+        // Ctrl+A or Home: Jump to start of prompt input
+        if (key == FL_Home || ((state & (FL_CTRL | FL_COMMAND)) && (key == 'a' || key == 'A'))) {
+            insert_position(input_start_);
+            show_insert_position();
+            return 1;
+        }
+
+        // Ctrl+E or End: Jump to end of prompt input
+        if (key == FL_End || ((state & (FL_CTRL | FL_COMMAND)) && (key == 'e' || key == 'E'))) {
+            insert_position(buffer_->length());
+            show_insert_position();
+            return 1;
+        }
+
+        // Unix line discard (Ctrl+U): Delete from cursor back to prompt start
+        if ((state & (FL_CTRL | FL_COMMAND)) && (key == 'u' || key == 'U')) {
+            int cur = insert_position();
+            if (cur > input_start_) {
+                buffer_->remove(input_start_, cur);
+                insert_position(input_start_);
+                show_insert_position();
+            }
+            return 1;
+        }
+
+        // Kill forward (Ctrl+K): Delete from cursor to end of input line
+        if ((state & (FL_CTRL | FL_COMMAND)) && (key == 'k' || key == 'K')) {
+            int cur = insert_position();
+            int end = buffer_->length();
+            if (cur >= input_start_ && cur < end) {
+                buffer_->remove(cur, end);
+            }
+            return 1;
+        }
+
+        // Backward kill word (Ctrl+W): Delete word before cursor
+        if ((state & (FL_CTRL | FL_COMMAND)) && (key == 'w' || key == 'W')) {
+            int cur = insert_position();
+            if (cur > input_start_) {
+                int pos = cur;
+                // Skip trailing whitespace before cursor
+                while (pos > input_start_) {
+                    char c = buffer_->byte_at(pos - 1);
+                    if (!std::isspace((unsigned char)c)) break;
+                    pos--;
+                }
+                // Skip word characters
+                while (pos > input_start_) {
+                    char c = buffer_->byte_at(pos - 1);
+                    if (std::isspace((unsigned char)c)) break;
+                    pos--;
+                }
+                buffer_->remove(pos, cur);
+                insert_position(pos);
+                show_insert_position();
+            }
+            return 1;
+        }
+
+        // Escape key: Clear the entire live line completely
+        if (key == FL_Escape) {
+            replaceLiveText("");
             return 1;
         }
 
@@ -188,11 +255,6 @@ int TerminalView::handle(int event) {
         }
         if (key == FL_Up) { moveHistory(-1); return 1; }
         if (key == FL_Down) { moveHistory(1); return 1; }
-        if (key == FL_Home) {
-            insert_position(input_start_);
-            show_insert_position();
-            return 1;
-        }
         if (key == FL_BackSpace) {
             if (insert_position() <= input_start_) return 1;
         }
