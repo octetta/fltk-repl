@@ -29,8 +29,9 @@ Project and Octetta pages:
 - [Octetta on YouTube](https://www.youtube.com/@octetta)
 - [Octetta on LinkedIn](https://www.linkedin.com/in/octetta)
 
-Startup and `--check` print the configured FLTK and Pikchr versions, the
-linked miniaudio runtime version, these URLs, and the UTC build date.
+Startup and `--check` print the skrepl banner, the configured FLTK and Pikchr
+versions, the linked miniaudio runtime version, these URLs, and the UTC build
+date.
 
 ## Build
 
@@ -161,6 +162,14 @@ an image is provided, showing the window displays an empty canvas. Named
 producers use separate windows, so waveform and spectrogram views can remain
 visible together.
 
+For annotated output, use `bitmap_win_set_spectrogram_labeled()` or
+`bitmap_win_set_waveform()`. Their sample-rate-aware `_ex` variants accept a
+rate in hertz, allowing frequency and duration labels to use physical units;
+the compatibility forms pass no rate and therefore use Nyquist-normalized
+frequency values. Waveform calls may also supply loop start/end frame indices,
+using `-1` when a marker is unavailable. Sample buffers are copied or consumed
+synchronously and remain owned by the caller.
+
 Skred 0.52.0 supplies parser data to host foreign-function callbacks. The REPL
 uses reserved slot `/ff9` to copy that data and marshal rendering onto FLTK's
 main thread. Display a wavetable or the completed temporary record buffer with:
@@ -238,8 +247,9 @@ amplitude, frequency, pan, phase, and ring modulation links. The root voice is
 highlighted. FLTK renders Pikchr's SVG geometry, while the view overlays its
 `<text>` labels because NanoSVG does not render SVG text.
 
-CTest covers graph conversion and passes the generated source through the
-vendored renderer in addition to the existing SVG image smoke test:
+CTest covers SVG loading, spectrogram rendering and spectral metrics, waveform
+rendering and audio metrics, vector-font labels, and voice-graph conversion
+through the vendored Pikchr renderer:
 
 ```sh
 ctest --test-dir build --output-on-failure
