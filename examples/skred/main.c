@@ -18,6 +18,13 @@ typedef struct app_state {
     repl_ctx *repl;
 } app_state;
 
+/* Persistent settings for boot command */
+static unsigned int g_voices = 32;
+static unsigned int g_frames = 128;
+static int g_port = 0;
+static int g_output = -1;
+static int g_input = -1;
+
 static void usage(const char *program) {
     printf("usage: %s [options]\n", program);
     printf("  -v, --voices N       voice count (default 32)\n");
@@ -76,7 +83,7 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
         if (n >= 2 && strcmp(arg, "show") == 0) { bitmap_win_show(bw); return; }
         if (n >= 2 && strcmp(arg, "hide") == 0) { bitmap_win_hide(bw); return; }
         if (n >= 2 && strcmp(arg, "clear") == 0) { bitmap_win_clear(bw); return; }
-        bitmap_win_show(bw);  /* default action */
+        bitmap_win_show(bw);
         return;
     }
 
@@ -118,21 +125,57 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
     skred_line(line, userdata);
 }
 
+static void cmd_boot(int argc, char **argv, void *userdata) {
+    app_state *app = (app_state *)userdata;
+    int changed = 0;
+
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "voices") == 0 && i+1 < argc) {
+            int v = atoi(argv[i+1]);
+            if (v >= 1 && v <= 64) {
+                g_voices = (unsigned int)v;
+                changed = 1;
+            }
+        } else if (strcmp(argv[i], "frames") == 0 && i+1 < argc) {
+            int f = atoi(argv[i+1]);
+            if (f >= 1) {
+                g_frames = (unsigned int)f;
+                changed = 1;
+            }
+        } else if (strcmp(argv[i], "port") == 0 && i+1 < argc) {
+            g_port = atoi(argv[i+1]);
+            changed = 1;
+        }
+    }
+
+    repl_println(app->repl, "Stopping current Skred engine...");
+    skred_control_dispatch_stop();
+    skred_stop();
+
+    repl_printf(app->repl, "Restarting with voices=%u, frames=%u, port=%d...\n",
+                g_voices, g_frames, g_port);
+
+    if (skred_start(g_frames, g_voices, g_port) != 0) {
+        repl_println(app->repl, "Failed to restart Skred engine!");
+    } else {
+        repl_println(app->repl, "Skred engine restarted successfully.");
+    }
+}
 
 static void gui_help(int argc, char **argv, void *userdata) {
     app_state *app = (app_state *)userdata;
-    (void)argc;
-    (void)argv;
+    (void)argc; (void)argv;
     repl_println(app->repl,
         "GUI commands:\n"
-        "  clear                 clear scrollback\n"
-        "  theme light|dark      change colors\n"
-        "  font \"name\" [size]    change terminal font\n"
-        "  bitmap [show|hide|clear]   graphics output window\n"
+        "  clear                    clear scrollback\n"
+        "  theme light|dark         change colors\n"
+        "  font \"name\" [size]       change terminal font\n"
+        "  bitmap [show|hide|clear] graphics output window\n"
         "  panel load <file.pnl> | reload | hide\n"
-        "  quit / exit           stop Skred and close the window\n"
+        "  boot [voices N] [frames N] [port N]   restart Skred\n"
+        "  quit / exit              stop everything\n"
         "\n"
-        "Every other line is sent unchanged to Skred.");
+        "Every other line is sent to Skred.");
 }
 
 static void panel_to_skred(const char *line, void *user_data) {
@@ -168,31 +211,19 @@ int main(int argc, char **argv) {
             check_only = 1;
         } else if (!strcmp(arg, "-v") || !strcmp(arg, "--voices")) {
             if (++i >= argc || !parse_int(arg, argv[i], &value)) return 2;
-            if (value < 1 || value > 64) {
-                fprintf(stderr, "voices must be 1..64\n");
-                return 2;
-            }
+            if (value < 1 || value > 64) { fprintf(stderr, "voices must be 1..64\n"); return 2; }
             voices = (unsigned int)value;
         } else if (!strncmp(arg, "-v", 2) && arg[2]) {
             if (!parse_int("-v", arg + 2, &value)) return 2;
-            if (value < 1 || value > 64) {
-                fprintf(stderr, "voices must be 1..64\n");
-                return 2;
-            }
+            if (value < 1 || value > 64) { fprintf(stderr, "voices must be 1..64\n"); return 2; }
             voices = (unsigned int)value;
         } else if (!strcmp(arg, "-r") || !strcmp(arg, "--frames")) {
             if (++i >= argc || !parse_int(arg, argv[i], &value)) return 2;
-            if (value < 1) {
-                fprintf(stderr, "frames must be positive\n");
-                return 2;
-            }
+            if (value < 1) { fprintf(stderr, "frames must be positive\n"); return 2; }
             frames = (unsigned int)value;
         } else if (!strncmp(arg, "-r", 2) && arg[2]) {
             if (!parse_int("-r", arg + 2, &value)) return 2;
-            if (value < 1) {
-                fprintf(stderr, "frames must be positive\n");
-                return 2;
-            }
+            if (value < 1) { fprintf(stderr, "frames must be positive\n"); return 2; }
             frames = (unsigned int)value;
         } else if (!strcmp(arg, "-p") || !strcmp(arg, "--port")) {
             if (++i >= argc || !parse_int(arg, argv[i], &port)) return 2;
@@ -218,6 +249,13 @@ int main(int argc, char **argv) {
         return 0;
     }
 
+    /* Save for boot command */
+    g_voices = voices;
+    g_frames = frames;
+    g_port = port;
+    g_output = output;
+    g_input = input;
+
     app.repl = repl_create("Skred REPL", 960, 680);
     if (!app.repl) {
         fprintf(stderr, "could not create the FLTK REPL window\n");
@@ -227,6 +265,7 @@ int main(int argc, char **argv) {
     repl_set_prompt(app.repl, "# ");
     repl_register_default_commands(app.repl);
     repl_register_command(app.repl, "help", gui_help, &app);
+    repl_register_command(app.repl, "boot", cmd_boot, &app);
     repl_set_fallback_handler(app.repl, bitmap_panel_handler, &app);
     panel_set_command_handler(panel_to_skred, NULL);
 
@@ -234,8 +273,8 @@ int main(int argc, char **argv) {
     repl_printf(app.repl, "frames/callback %u; voices %u; UDP port %d\n",
                 frames, voices, port);
 
-    skred_set_audio_device(output, input);
-    if (skred_start(frames, voices, port) != 0) {
+    skred_set_audio_device(g_output, g_input);
+    if (skred_start(g_frames, g_voices, g_port) != 0) {
         repl_println(app.repl, "Could not start the Skred audio engine.");
         repl_println(app.repl, "Close this window after reviewing the message.");
         repl_run(app.repl);
@@ -245,8 +284,8 @@ int main(int argc, char **argv) {
 
     skred_logger(1);
     repl_println(app.repl,
-        "Ready. Enter Skred commands directly; type help for GUI commands.\n"
-        "Example: panel load controls.pnl   or   bitmap show");
+        "Ready. Type 'help' for commands.\n"
+        "Example: boot voices 48 frames 256");
 
     i = repl_run(app.repl);
     skred_control_dispatch_stop();
