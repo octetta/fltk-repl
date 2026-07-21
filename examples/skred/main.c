@@ -326,7 +326,7 @@ int main(int argc, char **argv) {
     }
 
     if (check_only) {
-        printf("fltk-repl %s\n", FLTK_REPL_VERSION);
+        printf("skrepl %s\n", FLTK_REPL_VERSION);
         printf("Skred %s\n%s\n", skred_version(), skred_features());
         return 0;
     }
@@ -338,7 +338,7 @@ int main(int argc, char **argv) {
     g_output = output;
     g_input = input;
 
-    app.repl = repl_create("Skred REPL", 960, 680);
+    app.repl = repl_create("skrepl", 960, 680);
     if (!app.repl) {
         fprintf(stderr, "could not create the FLTK REPL window\n");
         return 1;
@@ -353,7 +353,7 @@ int main(int argc, char **argv) {
     repl_set_fallback_handler(app.repl, bitmap_panel_handler, &app);
     panel_set_command_handler(panel_to_skred, NULL);
 
-    repl_printf(app.repl, "fltk-repl %s\n", FLTK_REPL_VERSION);
+    repl_printf(app.repl, "skrepl %s\n", FLTK_REPL_VERSION);
     repl_printf(app.repl, "Skred %s\n%s\n", skred_version(), skred_features());
     repl_printf(app.repl, "frames/callback %u; voices %u; UDP port %d\n",
                 frames, voices, port);

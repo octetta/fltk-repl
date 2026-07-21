@@ -5,8 +5,8 @@ The application links to the packaged Skred/PULP release API rather than a
 PULP build tree. Input that is not a GUI command is forwarded as a complete,
 unchanged line to `skred_command()`.
 
-The repository version is stored in `VERSION` and printed before the linked
-Skred version at startup and by `./build/skred_repl --check`.
+The skrepl version is stored in `VERSION` and printed before the linked Skred
+version at startup and by `./build/skrepl --check`.
 
 The terminal supports scrollback, command history, selection and clipboard
 operations, light and dark themes, configurable fonts, and native FLTK
@@ -21,7 +21,18 @@ The default build requires CMake 3.16 or newer, a C/C++ toolchain, `curl`,
 ```sh
 cmake -S . -B build
 cmake --build build -j
-./build/skred_repl
+./build/skrepl
+```
+
+On macOS, the build instead produces `build/skrepl.app`, copies the
+universal Skred dylibs into `Contents/Frameworks`, and applies an ad-hoc
+signature with `codesign`. Disable only the signing step with
+`-DFLTK_REPL_ADHOC_SIGN=OFF`; the application bundle is still produced.
+`make run` selects the correct executable automatically. For a command-line
+check of the bundle, run:
+
+```sh
+./build/skrepl.app/Contents/MacOS/skrepl --check
 ```
 
 The Makefile provides shortcuts for the same workflow:
@@ -71,7 +82,7 @@ Print the linked Skred version and feature list without creating a window or
 starting audio:
 
 ```sh
-./build/skred_repl --check
+./build/skrepl --check
 ```
 
 ## Command-line options

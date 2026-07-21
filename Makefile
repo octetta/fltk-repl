@@ -4,6 +4,12 @@
 
 .PHONY: all clean run info help dist
 
+ifeq ($(shell uname -s),Darwin)
+REPL_BIN := ./build/skrepl.app/Contents/MacOS/skrepl
+else
+REPL_BIN := ./build/skrepl
+endif
+
 # Default target
 all:
 	@cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -11,7 +17,7 @@ all:
 
 # Build and run
 run: all
-	@./build/skred_repl
+	@$(REPL_BIN)
 
 # Clean build directory
 clean:
@@ -30,7 +36,7 @@ info:
 help:
 	@echo "Available targets:"
 	@echo "  all      - Configure and build everything (default)"
-	@echo "  run      - Build and run skred_repl"
+	@echo "  run      - Build and run skrepl"
 	@echo "  clean    - Remove build directory"
 	@echo "  info     - Show detected Skred package and configuration"
 	@echo "  help     - Show this help"
@@ -45,7 +51,7 @@ dist: clean
 	@cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 	@cmake --build build -j
 	@echo ""
-	@echo "Build complete. Binary is at ./build/skred_repl"
+	@echo "Build complete. Application is at $(REPL_BIN)"
 
 # Print current detected Skred root (quick check)
 skred-info:

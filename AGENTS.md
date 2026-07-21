@@ -6,15 +6,17 @@ Core C++17 implementation files live in `src/`; public, C-compatible headers are
 
 ## Build, Test, and Development Commands
 
-- `make` configures a Release build and compiles `build/skred_repl`.
+- `make` configures a Release build and compiles `build/skrepl` or the macOS `build/skrepl.app` bundle.
 - `make run` rebuilds and launches the FLTK application.
 - `cmake -S . -B build -DSKRED_VERSION=0.52.0` selects a packaged Skred release version.
 - `cmake --build build -j` performs an incremental parallel build.
 - `ctest --test-dir build --output-on-failure` runs headless SVG, spectrogram, and waveform tests.
-- `./build/skred_repl --check` verifies the linked release without opening a window or starting audio.
+- `./build/skrepl --check` verifies the linked release without opening a window or starting audio; on macOS use `./build/skrepl.app/Contents/MacOS/skrepl --check`.
 - `make info` prints relevant cached CMake configuration; `make clean` removes the build directory.
 
 Initial configuration may download FLTK and Skred. For offline FLTK builds, provide `-DREPL_FLTK_DIR=/path/to/fltk` or populate `third_party/fltk`.
+On macOS the executable target is emitted as `build/skrepl.app`, bundles
+Skred dylibs, and is ad-hoc signed unless `FLTK_REPL_ADHOC_SIGN=OFF`.
 
 ## Coding Style & Naming Conventions
 
@@ -22,7 +24,7 @@ Match nearby code: four-space indentation, braces on the same line, and focused 
 
 ## Testing Guidelines
 
-There is no coverage threshold. Every change should complete a clean build, pass CTest, and pass `./build/skred_repl --check`. Tests cover headless in-memory SVG parsing plus float-audio spectrogram and waveform rendering. For terminal, bitmap, panel, theme, font, history, or clipboard changes, also run `make run` and manually exercise the affected interaction. Add tests under `tests/` and register them with CTest.
+There is no coverage threshold. Every change should complete a clean build, pass CTest, and pass the platform-appropriate `--check` command above. Tests cover headless in-memory SVG parsing plus float-audio spectrogram and waveform rendering. For terminal, bitmap, panel, theme, font, history, or clipboard changes, also run `make run` and manually exercise the affected interaction. Add tests under `tests/` and register them with CTest.
 
 ## Commit & Pull Request Guidelines
 

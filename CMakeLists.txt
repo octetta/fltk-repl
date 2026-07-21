@@ -125,10 +125,55 @@ if(SKRED_BUILD_REPL)
     target_link_libraries(skred_repl PRIVATE replfltk ${SKRED_API_LIBRARY})
     set_target_properties(skred_repl PROPERTIES
         LINKER_LANGUAGE CXX
+        OUTPUT_NAME "skrepl"
         BUILD_RPATH "${SKRED_ROOT}/lib64;${SKRED_ROOT}/lib"
     )
 
-    if(WIN32)
+    if(APPLE)
+        option(FLTK_REPL_ADHOC_SIGN
+               "Ad-hoc sign the macOS application bundle after building" ON)
+        set_target_properties(skred_repl PROPERTIES
+            MACOSX_BUNDLE TRUE
+            MACOSX_BUNDLE_INFO_PLIST
+                "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Info.plist.in"
+            MACOSX_BUNDLE_BUNDLE_NAME "skrepl"
+            MACOSX_BUNDLE_GUI_IDENTIFIER "org.octetta.skrepl"
+            MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+            OUTPUT_NAME "skrepl"
+            BUILD_RPATH "@executable_path/../Frameworks"
+        )
+
+        file(GLOB _skred_macos_dylibs "${SKRED_ROOT}/lib/*.dylib")
+        if(NOT _skred_macos_dylibs)
+            message(FATAL_ERROR "Skred macOS package contains no dylibs")
+        endif()
+
+        find_program(FLTK_REPL_CODESIGN_EXECUTABLE codesign)
+        if(FLTK_REPL_ADHOC_SIGN AND NOT FLTK_REPL_CODESIGN_EXECUTABLE)
+            message(FATAL_ERROR "codesign is required for FLTK_REPL_ADHOC_SIGN")
+        endif()
+
+        add_custom_command(TARGET skred_repl POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_BUNDLE_DIR:skred_repl>/Contents/Frameworks"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${_skred_macos_dylibs}
+                "$<TARGET_BUNDLE_DIR:skred_repl>/Contents/Frameworks"
+            COMMENT "Bundling Skred libraries in skrepl.app"
+            COMMAND_EXPAND_LISTS
+            VERBATIM
+        )
+        if(FLTK_REPL_ADHOC_SIGN)
+            add_custom_command(TARGET skred_repl POST_BUILD
+                COMMAND "${FLTK_REPL_CODESIGN_EXECUTABLE}"
+                    --force --deep --sign - --timestamp=none
+                    "$<TARGET_BUNDLE_DIR:skred_repl>"
+                COMMENT "Ad-hoc signing skrepl.app"
+                VERBATIM
+            )
+        endif()
+    elseif(WIN32)
         set_target_properties(skred_repl PROPERTIES WIN32_EXECUTABLE FALSE)
     endif()
 endif()
