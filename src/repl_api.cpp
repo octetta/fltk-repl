@@ -8,12 +8,15 @@
 #include <FL/Fl_Native_File_Chooser.H>
 #include <FL/fl_ask.H>
 
+#include <FL/fl_draw.H>   // add near the other FL/ includes, for fl_font/fl_width
+
 #include <cctype>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -36,6 +39,9 @@ struct repl_ctx {
 // ---------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------
+
+static const int kFontProbeSize = 14;  // reference size for monospace detection,
+                                        // independent of the terminal's current font_size
 
 static char *dup_cstr(const std::string &s) {
     char *p = (char *)malloc(s.size() + 1);
@@ -113,6 +119,14 @@ static Fl_Font find_font_by_name(const char *name) {
     return (Fl_Font)-1;
 }
 
+static bool font_looks_monospace(Fl_Font f, int size) {
+    fl_font(f, size);
+    double wi = fl_width("i");
+    double wM = fl_width("M");
+    double wl = fl_width("l");
+    return wi > 0.0 && fabs(wi - wM) < 0.01 && fabs(wi - wl) < 0.01;
+}
+
 // ---------------------------------------------------------------------
 // default builtin commands
 // ---------------------------------------------------------------------
@@ -149,6 +163,10 @@ static void cmd_font(int argc, char **argv, void *ud) {
     repl_ctx *ctx = (repl_ctx *)ud;
     if (argc < 2) {
         repl_printf(ctx, "current font: %s %dpt\n", ctx->font_name.c_str(), ctx->font_size);
+        repl_println(ctx, "monospace fonts found:");
+        char buf[4096];
+        repl_list_fonts_filtered(ctx, buf, sizeof(buf), 1, kFontProbeSize);
+        repl_print(ctx, buf);
         return;
     }
     int size = ctx->font_size;
@@ -334,23 +352,31 @@ void repl_set_font_size(repl_ctx *ctx, int size) {
     ctx->term->setFont(f, size);
 }
 
-int repl_list_fonts(repl_ctx *, char *buf, int buf_capacity) {
+int repl_list_fonts_filtered(repl_ctx *, char *buf, int buf_capacity,
+                              int monospace_only, int size) {
     if (!buf || buf_capacity <= 0) return 0;
     buf[0] = '\0';
     int n = Fl::set_fonts("-*");
     int used = 0;
+    int found = 0;
     for (int i = 0; i < n; ++i) {
         int attr = 0;
         const char *fname = Fl::get_font_name((Fl_Font)i, &attr);
         if (!fname) continue;
+        if (monospace_only && !font_looks_monospace((Fl_Font)i, size)) continue;
+        ++found;
         int len = (int)strlen(fname);
-        if (used + len + 1 >= buf_capacity) break;
+        if (used + len + 1 >= buf_capacity) continue; // keep counting, stop writing
         memcpy(buf + used, fname, (size_t)len);
         used += len;
         buf[used++] = '\n';
         buf[used] = '\0';
     }
-    return n;
+    return found;
+}
+
+int repl_list_fonts(repl_ctx *ctx, char *buf, int buf_capacity) {
+    return repl_list_fonts_filtered(ctx, buf, buf_capacity, 0, kFontProbeSize);
 }
 
 char *repl_open_file_dialog(repl_ctx *, const char *title, const char *filter) {

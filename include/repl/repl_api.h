@@ -145,10 +145,21 @@ void repl_set_colors(repl_ctx *ctx,
 int repl_set_font(repl_ctx *ctx, const char *font_name, int size);
 void repl_set_font_size(repl_ctx *ctx, int size);
 
-/* Fills buf (caller-allocated, capacity max_names) with newline-
+/* Fills buf (caller-allocated, capacity buf_capacity) with newline-
  * separated names of all fonts FLTK found on the system, for building
- * a font picker. Returns the number of fonts found. */
+ * a font picker. Returns the number of fonts found (may exceed what
+ * fit in buf; check for truncation by scanning buf yourself if that
+ * matters). */
 int repl_list_fonts(repl_ctx *ctx, char *buf, int buf_capacity);
+
+/* Same as repl_list_fonts, but when monospace_only is non-zero, only
+ * fonts whose 'i', 'l', and 'M' glyphs render at equal width at the
+ * given size are included. Pass the size you intend to display text
+ * at -- width equality can vary slightly by size for some fonts.
+ * Must be called after the window is shown (needs a valid GL/X
+ * context for fl_width() measurements). */
+int repl_list_fonts_filtered(repl_ctx *ctx, char *buf, int buf_capacity,
+                              int monospace_only, int size);
 
 /* ---- dialogs ------------------------------------------------------------ */
 
