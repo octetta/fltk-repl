@@ -144,6 +144,10 @@ void repl_set_colors(repl_ctx *ctx,
  * with good Unicode/Braille coverage is recommended -- see README. */
 int repl_set_font(repl_ctx *ctx, const char *font_name, int size);
 void repl_set_font_size(repl_ctx *ctx, int size);
+/* Returned font-name pointer is owned by ctx and remains valid until the font
+ * is changed or ctx is destroyed. */
+const char *repl_get_font_name(repl_ctx *ctx);
+int repl_get_font_size(repl_ctx *ctx);
 
 /* Fills buf (caller-allocated, capacity buf_capacity) with newline-
  * separated names of all fonts FLTK found on the system, for building

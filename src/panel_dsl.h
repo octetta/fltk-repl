@@ -3,33 +3,44 @@
 
 /*
  * panel_dsl: small declarative GUI panels (sliders/fields/toggles/buttons/
- * choices) that fire Skred commands, loaded from a tiny text DSL.
+ * choices/button grids) that fire Skred commands, loaded from a tiny text
+ * DSL.
  *
  * DSL example:
  *
- *   window "Envelope" 320 200
+ *   window "Envelope" 320 260
  *
- *   slider attack  0 5000 ms   "env_attack_set %d"
- *   slider decay   0 5000 ms   "env_decay_set %d"
+ *   slider attack  0 5000 10 ms   "env_attack_set %d"  =1200
+ *   slider cutoff  20 20000 Hz    "filter_cutoff_set %d"  ~live
  *   row
- *     toggle hardstop           "loop_release_hard_stop %d"
- *     field  voices  1 32       "voice_count_set %d"
+ *     toggle hardstop           "loop_release_hard_stop %d"  =on
+ *     field  voices  1 32       "voice_count_set %d"         =4
  *   endrow
- *   choice wave  "sine saw square"   "voice_wave_set %s"
- *   button panic                "all_notes_off"
+ *   choice wave  "sine saw square"   "voice_wave_set %s"  =saw
+ *   label "-- pads --"
+ *   grid 2 4
+ *     button k1 "note_on 60" "note_off 60"
+ *     button k2 "note_on 62" "note_off 62"
+ *     button k3 "note_on 64" "note_off 64"
+ *   endgrid
+ *   button panic "all_notes_off"
  *
  * Grammar (one statement per line, '#' starts a comment, blank lines ignored):
  *
  *   window <"title"> <width> <height>
- *   slider <name> <min> <max> [<unit>] <"template"> [@weight]
- *   field  <name> <min> <max> <"template"> [@weight]
- *   toggle <name> <"template"> [@weight]
- *   button <name> <"template"> [@weight]
- *   choice <name> <"space separated options"> <"template"> [@weight]
- *   label  <"text"> [@weight]
+ *   slider <name> <min> <max> [<step>] [<unit>] <"template"> [=default] [@weight] [~live]
+ *   field  <name> <min> <max> <"template"> [=default] [@weight]
+ *   toggle <name> <"template"> [=default] [@weight]
+ *   button <name> <"template">                        (release-only)
+ *   button <name> <"press"> <"release">                (modal; no default)
+ *   choice <name> <"space separated options"> <"template"> [=default] [@weight]
+ *   label  <"text"> [@weight]                          (no default)
  *   row
  *   ...items...
  *   endrow
+ *   grid <rows> <cols>
+ *   ...button statements only...
+ *   endgrid
  *
  * `<"template">` is a command line sent verbatim to the registered command
  * handler, except:
@@ -40,6 +51,62 @@
  * for "one control -> one command" bindings, which covers the intended use.
  *
  * `@weight` (optional, default 1) controls relative width within a `row`.
+ *
+ * `=default` (optional) sets the widget's initial value instead of the
+ * built-in fallback (slider: midpoint of min/max; field: min; toggle:
+ * off; choice: first option). Validated at load time -- out-of-range
+ * slider/field defaults, unrecognized toggle values (accepts
+ * 0/1/on/off/true/false), or a choice default that isn't one of the
+ * listed options are all reported as parse errors rather than silently
+ * clamped or ignored. `@weight`, `=default`, and `~flag` modifiers may
+ * appear in any order after the template.
+ *
+ * SLIDER STEP AND LIVE MODE
+ *
+ * A slider may have an optional numeric <step> token between <max> and
+ * the (also optional) <unit>: `slider cutoff 20 20000 10 Hz "..."`. It's
+ * distinguished from <unit> by looking numeric, so old files with just a
+ * unit (`slider attack 0 5000 ms "..."`) keep parsing exactly as before.
+ * Without a step, the slider is continuous (FLTK's default granularity).
+ *
+ * By default, a slider only sends its command on mouse release, to avoid
+ * flooding the command handler with one call per pixel of drag. Adding
+ * the `~live` flag makes it also send (throttled to roughly one message
+ * per 30ms) while dragging, in addition to a guaranteed final message on
+ * release:
+ *
+ *   slider cutoff 20 20000 Hz "filter_cutoff_set %d" ~live
+ *
+ * MODAL BUTTONS
+ *
+ * `button name "template"` behaves as before: fires the template once,
+ * on release, with no substitution.
+ *
+ * `button name "press_template" "release_template"` is modal/momentary:
+ * `press_template` fires the moment the button is pressed down,
+ * `release_template` fires when it's released -- useful for a held gate,
+ * e.g. `button k1 "note_on 60" "note_off 60"`. The release message
+ * always fires on mouse-up, even if the cursor was dragged off the
+ * button first, so a held control can't get stuck "on" with no matching
+ * "off". Buttons don't accept `=default` (there's no state to default).
+ *
+ * BUTTON GRIDS
+ *
+ * `grid <rows> <cols>` / `endgrid` lays out only `button` statements (any
+ * other statement type inside is a load error) into an evenly-spaced
+ * R x C grid, filled row-major. Fewer buttons than `rows*cols` leaves the
+ * remaining cells blank; more is a load error. Every button in the grid
+ * expands to exactly fill its cell, with its label centered on both axes
+ * (Fl_Button's default alignment). `grid` is a top-level construct like
+ * `row` -- it can't nest inside a `row`, and a `row`/another `grid`
+ * can't nest inside it.
+ *
+ * Windows are live-resizable: sliders, fields, toggles, buttons, choices,
+ * and button-grid cells all track the window's width as it's resized
+ * (recomputed from the same column-splitting logic used at load time).
+ * Row heights and vertical layout stay fixed -- only horizontal space is
+ * redistributed. A minimum window size is enforced so controls can't be
+ * crushed by shrinking too far.
  *
  * Threading: like bitmap_win, all calls must happen on the FLTK main
  * thread (i.e. from the same context skred_command() normally runs on).

@@ -14,10 +14,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cctype>
 #include <string>
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <chrono>
+#include <algorithm>
 
 namespace {
 
@@ -32,7 +35,8 @@ struct ParsedItem {
     std::string name;          /* also used as label / button text */
     double min = 0, max = 1;
     std::string unit;          /* slider only, optional */
-    std::string tmpl;          /* command template */
+    std::string tmpl;          /* command template (button: release template) */
+    std::string tmpl_press;    /* button only: press-time template, empty = none */
     std::vector<std::string> options; /* choice only */
     std::string text;          /* label only */
     int weight = 1;
@@ -44,17 +48,35 @@ struct ParsedItem {
     double default_num = 0;    /* slider / field */
     bool default_bool = false; /* toggle */
     std::string default_str;   /* choice */
+
+    /* Slider only. */
+    bool has_step = false;
+    double step = 0;
+    bool live = false;
 };
 
 struct ParsedRow {
     std::vector<ParsedItem> items;
 };
 
+struct ParsedGrid {
+    int rows = 1, cols = 1;
+    std::vector<ParsedItem> buttons; /* row-major, may be fewer than rows*cols */
+};
+
+enum BlockKind { BK_ROW, BK_GRID };
+
+struct ParsedBlock {
+    BlockKind kind = BK_ROW;
+    ParsedRow row;   /* valid when kind == BK_ROW */
+    ParsedGrid grid; /* valid when kind == BK_GRID */
+};
+
 struct ParsedWindow {
     std::string title = "Panel";
     int width = 320;
     int height = 200;
-    std::vector<ParsedRow> rows;
+    std::vector<ParsedBlock> blocks;
 };
 
 /* ---------------------------------------------------------------------
@@ -87,15 +109,25 @@ std::vector<std::string> tokenize(const std::string &line) {
     return out;
 }
 
-/* Strips trailing @weight and/or =default modifiers off the end of a
- * token list, in either order (e.g. both "... =1200 @2" and "... @2 =1200"
- * are accepted). What remains in `toks` is just the statement's required
- * positional arguments. */
+bool looks_numeric(const std::string &s) {
+    if (s.empty()) return false;
+    char *end = NULL;
+    strtod(s.c_str(), &end);
+    return end != s.c_str() && *end == '\0';
+}
+
+/* Strips trailing @weight, =default, and ~flag modifiers off the end of a
+ * token list, in any order (e.g. "... =1200 @2 ~live" and "... ~live @2
+ * =1200" are equivalent). What remains in `toks` is just the statement's
+ * required positional arguments. `flags` may be NULL if a statement type
+ * doesn't accept any ~flag modifiers. */
 void pop_modifiers(std::vector<std::string> &toks, int &weight,
-                    bool &has_default, std::string &default_tok) {
+                    bool &has_default, std::string &default_tok,
+                    std::vector<std::string> *flags) {
     weight = 1;
     has_default = false;
     default_tok.clear();
+    if (flags) flags->clear();
     while (!toks.empty()) {
         const std::string &last = toks.back();
         if (last.size() > 1 && last[0] == '@') {
@@ -107,6 +139,11 @@ void pop_modifiers(std::vector<std::string> &toks, int &weight,
         if (last.size() > 1 && last[0] == '=') {
             default_tok = last.substr(1);
             has_default = true;
+            toks.pop_back();
+            continue;
+        }
+        if (last.size() > 1 && last[0] == '~') {
+            if (flags) flags->push_back(last.substr(1));
             toks.pop_back();
             continue;
         }
@@ -123,11 +160,16 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
     std::string raw;
     int lineno = 0;
     bool in_row = false;
+    bool in_grid = false;
     ParsedRow current_row;
+    ParsedGrid current_grid;
 
     auto emit_item = [&](const ParsedItem &item) {
-        if (in_row) current_row.items.push_back(item);
-        else { ParsedRow r; r.items.push_back(item); pw.rows.push_back(r); }
+        if (in_row) { current_row.items.push_back(item); return; }
+        ParsedBlock blk;
+        blk.kind = BK_ROW;
+        blk.row.items.push_back(item);
+        pw.blocks.push_back(blk);
     };
 
     while (std::getline(in, raw)) {
@@ -139,62 +181,148 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
 
         const std::string &kw = t[0];
 
+        if (in_grid && kw != "button" && kw != "endgrid") {
+            if (kw == "grid") { err = "line " + std::to_string(lineno) + ": nested grid not supported"; return false; }
+            err = "line " + std::to_string(lineno) + ": grid may only contain button statements (got '" + kw + "')";
+            return false;
+        }
+
         if (kw == "window") {
             if (t.size() < 4) { err = "line " + std::to_string(lineno) + ": window needs \"title\" width height"; return false; }
             pw.title = t[1];
             pw.width = atoi(t[2].c_str());
             pw.height = atoi(t[3].c_str());
+
         } else if (kw == "row") {
             if (in_row) { err = "line " + std::to_string(lineno) + ": nested row not supported"; return false; }
             in_row = true;
             current_row = ParsedRow();
+
         } else if (kw == "endrow") {
             if (!in_row) { err = "line " + std::to_string(lineno) + ": endrow without row"; return false; }
-            pw.rows.push_back(current_row);
+            ParsedBlock blk;
+            blk.kind = BK_ROW;
+            blk.row = current_row;
+            pw.blocks.push_back(blk);
             in_row = false;
-        } else if (kw == "slider" || kw == "field") {
-            /* name min max [unit] "template" [=default] [@weight] */
-            if (t.size() < 5) { err = "line " + std::to_string(lineno) + ": " + kw + " needs name min max [unit] \"template\""; return false; }
+
+        } else if (kw == "grid") {
+            if (in_row) { err = "line " + std::to_string(lineno) + ": grid not allowed inside row"; return false; }
+            if (t.size() < 3) { err = "line " + std::to_string(lineno) + ": grid needs <rows> <cols>"; return false; }
+            int gr = atoi(t[1].c_str());
+            int gc = atoi(t[2].c_str());
+            if (gr <= 0 || gc <= 0) { err = "line " + std::to_string(lineno) + ": grid rows/cols must be positive"; return false; }
+            in_grid = true;
+            current_grid = ParsedGrid();
+            current_grid.rows = gr;
+            current_grid.cols = gc;
+
+        } else if (kw == "endgrid") {
+            if (!in_grid) { err = "line " + std::to_string(lineno) + ": endgrid without grid"; return false; }
+            int capacity = current_grid.rows * current_grid.cols;
+            if ((int)current_grid.buttons.size() > capacity) {
+                err = "line " + std::to_string(lineno) + ": grid declares " +
+                      std::to_string(current_grid.rows) + "x" + std::to_string(current_grid.cols) +
+                      " = " + std::to_string(capacity) + " cells but " +
+                      std::to_string(current_grid.buttons.size()) + " buttons were given";
+                return false;
+            }
+            ParsedBlock blk;
+            blk.kind = BK_GRID;
+            blk.grid = current_grid;
+            pw.blocks.push_back(blk);
+            in_grid = false;
+
+        } else if (kw == "slider") {
+            /* slider name min max [step] [unit] "template" [=default] [@weight] [~live] */
+            if (t.size() < 5) { err = "line " + std::to_string(lineno) + ": slider needs name min max [step] [unit] \"template\""; return false; }
             std::vector<std::string> rest(t.begin() + 1, t.end());
-            int weight; bool has_default; std::string default_tok;
-            pop_modifiers(rest, weight, has_default, default_tok);
+            int weight; bool has_default; std::string default_tok; std::vector<std::string> flags;
+            pop_modifiers(rest, weight, has_default, default_tok, &flags);
+
+            if (rest.size() < 4) { err = "line " + std::to_string(lineno) + ": slider is missing its \"template\""; return false; }
+
             ParsedItem it;
-            it.type = (kw == "slider") ? IT_SLIDER : IT_FIELD;
+            it.type = IT_SLIDER;
             it.name = rest[0];
             it.min = atof(rest[1].c_str());
             it.max = atof(rest[2].c_str());
-            if (rest.size() == 5) { it.unit = rest[3]; it.tmpl = rest[4]; }
-            else if (rest.size() == 4) { it.tmpl = rest[3]; }
-            else { err = "line " + std::to_string(lineno) + ": too many tokens for " + kw; return false; }
+
+            std::string tmpl_tok = rest.back();
+            std::vector<std::string> middle(rest.begin() + 3, rest.end() - 1);
+            if (middle.size() > 2) { err = "line " + std::to_string(lineno) + ": too many tokens before slider's template"; return false; }
+            for (size_t mi = 0; mi < middle.size(); ++mi) {
+                const std::string &m = middle[mi];
+                if (looks_numeric(m)) {
+                    if (it.has_step) { err = "line " + std::to_string(lineno) + ": slider has more than one numeric (step) token"; return false; }
+                    it.step = atof(m.c_str());
+                    it.has_step = true;
+                } else {
+                    if (!it.unit.empty()) { err = "line " + std::to_string(lineno) + ": slider has more than one unit-like token"; return false; }
+                    it.unit = m;
+                }
+            }
+            it.tmpl = tmpl_tok;
             it.weight = weight;
+
+            for (size_t fi = 0; fi < flags.size(); ++fi) {
+                if (flags[fi] == "live") it.live = true;
+                else { err = "line " + std::to_string(lineno) + ": unknown slider flag '~" + flags[fi] + "'"; return false; }
+            }
+
             if (has_default) {
                 double dv = atof(default_tok.c_str());
                 if (dv < it.min || dv > it.max) {
-                    err = "line " + std::to_string(lineno) + ": default " + default_tok + " is outside " + kw + "'s range [" + rest[1] + ", " + rest[2] + "]";
+                    err = "line " + std::to_string(lineno) + ": default " + default_tok + " is outside slider's range [" + rest[1] + ", " + rest[2] + "]";
                     return false;
                 }
                 it.default_num = dv;
                 it.has_default = true;
             }
             emit_item(it);
-        } else if (kw == "toggle" || kw == "button") {
-            /* toggle name "template" [=default] [@weight]
-             * button name "template" [@weight]           (no default) */
-            if (t.size() < 3) { err = "line " + std::to_string(lineno) + ": " + kw + " needs name \"template\""; return false; }
+
+        } else if (kw == "field") {
+            /* field name min max "template" [=default] [@weight] */
+            if (t.size() < 5) { err = "line " + std::to_string(lineno) + ": field needs name min max \"template\""; return false; }
             std::vector<std::string> rest(t.begin() + 1, t.end());
-            int weight; bool has_default; std::string default_tok;
-            pop_modifiers(rest, weight, has_default, default_tok);
-            if (rest.size() != 2) { err = "line " + std::to_string(lineno) + ": " + kw + " needs exactly name \"template\""; return false; }
+            int weight; bool has_default; std::string default_tok; std::vector<std::string> flags;
+            pop_modifiers(rest, weight, has_default, default_tok, &flags);
+            if (!flags.empty()) { err = "line " + std::to_string(lineno) + ": field does not support flag '~" + flags[0] + "'"; return false; }
+            if (rest.size() != 4) { err = "line " + std::to_string(lineno) + ": field needs exactly name min max \"template\""; return false; }
+
             ParsedItem it;
-            it.type = (kw == "toggle") ? IT_TOGGLE : IT_BUTTON;
+            it.type = IT_FIELD;
+            it.name = rest[0];
+            it.min = atof(rest[1].c_str());
+            it.max = atof(rest[2].c_str());
+            it.tmpl = rest[3];
+            it.weight = weight;
+            if (has_default) {
+                double dv = atof(default_tok.c_str());
+                if (dv < it.min || dv > it.max) {
+                    err = "line " + std::to_string(lineno) + ": default " + default_tok + " is outside field's range [" + rest[1] + ", " + rest[2] + "]";
+                    return false;
+                }
+                it.default_num = dv;
+                it.has_default = true;
+            }
+            emit_item(it);
+
+        } else if (kw == "toggle") {
+            /* toggle name "template" [=default] [@weight] */
+            if (t.size() < 3) { err = "line " + std::to_string(lineno) + ": toggle needs name \"template\""; return false; }
+            std::vector<std::string> rest(t.begin() + 1, t.end());
+            int weight; bool has_default; std::string default_tok; std::vector<std::string> flags;
+            pop_modifiers(rest, weight, has_default, default_tok, &flags);
+            if (!flags.empty()) { err = "line " + std::to_string(lineno) + ": toggle does not support flag '~" + flags[0] + "'"; return false; }
+            if (rest.size() != 2) { err = "line " + std::to_string(lineno) + ": toggle needs exactly name \"template\""; return false; }
+
+            ParsedItem it;
+            it.type = IT_TOGGLE;
             it.name = rest[0];
             it.tmpl = rest[1];
             it.weight = weight;
             if (has_default) {
-                if (kw == "button") {
-                    err = "line " + std::to_string(lineno) + ": button does not take a default value";
-                    return false;
-                }
                 std::string d = default_tok;
                 for (size_t ci = 0; ci < d.size(); ++ci) d[ci] = (char)tolower((unsigned char)d[ci]);
                 if (d == "1" || d == "on" || d == "true") it.default_bool = true;
@@ -203,13 +331,43 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
                 it.has_default = true;
             }
             emit_item(it);
+
+        } else if (kw == "button") {
+            /* button name "template"                          (release-only)
+             * button name "press_template" "release_template" (modal) */
+            if (t.size() < 3) { err = "line " + std::to_string(lineno) + ": button needs name \"template\" or name \"press\" \"release\""; return false; }
+            std::vector<std::string> rest(t.begin() + 1, t.end());
+            int weight; bool has_default; std::string default_tok; std::vector<std::string> flags;
+            pop_modifiers(rest, weight, has_default, default_tok, &flags);
+            if (!flags.empty()) { err = "line " + std::to_string(lineno) + ": button does not support flag '~" + flags[0] + "'"; return false; }
+            if (has_default) { err = "line " + std::to_string(lineno) + ": button does not take a default value"; return false; }
+
+            ParsedItem it;
+            it.type = IT_BUTTON;
+            it.name = rest[0];
+            if (rest.size() == 2) {
+                it.tmpl = rest[1]; /* release-only, backward compatible */
+            } else if (rest.size() == 3) {
+                it.tmpl_press = rest[1];
+                it.tmpl = rest[2]; /* release */
+            } else {
+                err = "line " + std::to_string(lineno) + ": button needs name \"template\" or name \"press\" \"release\"";
+                return false;
+            }
+            it.weight = weight;
+
+            if (in_grid) current_grid.buttons.push_back(it);
+            else emit_item(it);
+
         } else if (kw == "choice") {
             /* name "opt opt opt" "template" [=default] [@weight] */
             if (t.size() < 4) { err = "line " + std::to_string(lineno) + ": choice needs name \"options\" \"template\""; return false; }
             std::vector<std::string> rest(t.begin() + 1, t.end());
-            int weight; bool has_default; std::string default_tok;
-            pop_modifiers(rest, weight, has_default, default_tok);
+            int weight; bool has_default; std::string default_tok; std::vector<std::string> flags;
+            pop_modifiers(rest, weight, has_default, default_tok, &flags);
+            if (!flags.empty()) { err = "line " + std::to_string(lineno) + ": choice does not support flag '~" + flags[0] + "'"; return false; }
             if (rest.size() != 3) { err = "line " + std::to_string(lineno) + ": choice needs exactly name \"options\" \"template\""; return false; }
+
             ParsedItem it;
             it.type = IT_CHOICE;
             it.name = rest[0];
@@ -230,17 +388,21 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
                 it.has_default = true;
             }
             emit_item(it);
+
         } else if (kw == "label") {
             if (t.size() < 2) { err = "line " + std::to_string(lineno) + ": label needs \"text\""; return false; }
             std::vector<std::string> rest(t.begin() + 1, t.end());
-            int weight; bool has_default; std::string default_tok;
-            pop_modifiers(rest, weight, has_default, default_tok);
+            int weight; bool has_default; std::string default_tok; std::vector<std::string> flags;
+            pop_modifiers(rest, weight, has_default, default_tok, &flags);
+            if (!flags.empty()) { err = "line " + std::to_string(lineno) + ": label does not support flag '~" + flags[0] + "'"; return false; }
             if (has_default) { err = "line " + std::to_string(lineno) + ": label does not take a default value"; return false; }
+
             ParsedItem it;
             it.type = IT_LABEL;
             it.text = rest[0];
             it.weight = weight;
             emit_item(it);
+
         } else {
             err = "line " + std::to_string(lineno) + ": unknown statement '" + kw + "'";
             return false;
@@ -248,6 +410,7 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
     }
 
     if (in_row) { err = "unterminated row (missing endrow)"; return false; }
+    if (in_grid) { err = "unterminated grid (missing endgrid)"; return false; }
     return true;
 }
 
@@ -264,11 +427,33 @@ std::string format_template_int(const std::string &tmpl, long v) {
 }
 
 std::string format_template_float(const std::string &tmpl, double v) {
-    size_t p = tmpl.find("%f");
-    if (p == std::string::npos) return format_template_int(tmpl, (long)v);
-    char buf[64];
-    snprintf(buf, sizeof buf, "%.3f", v);
-    return tmpl.substr(0, p) + buf + tmpl.substr(p + 2);
+    /* Looks for %f or %.<N>f (printf-style precision), e.g. %.5f. Only
+     * the precision digits are special-cased -- no other printf flags
+     * (width, +, etc.) are supported, since a slider value substitution
+     * doesn't need them. Falls back to %d (int) substitution if no
+     * float-style placeholder is found at all, same as before. */
+    size_t p = tmpl.find('%');
+    while (p != std::string::npos) {
+        size_t i = p + 1;
+        int precision = -1; /* -1 = not specified, use default */
+        if (i < tmpl.size() && tmpl[i] == '.') {
+            size_t j = i + 1;
+            while (j < tmpl.size() && isdigit((unsigned char)tmpl[j])) ++j;
+            if (j > i + 1) {
+                precision = atoi(tmpl.substr(i + 1, j - i - 1).c_str());
+                i = j;
+            }
+        }
+        if (i < tmpl.size() && tmpl[i] == 'f') {
+            int prec = (precision >= 0) ? precision : 3;
+            if (prec > 17) prec = 17; /* beyond double's useful precision */
+            char buf[64];
+            snprintf(buf, sizeof buf, "%.*f", prec, v);
+            return tmpl.substr(0, p) + buf + tmpl.substr(i + 1);
+        }
+        p = tmpl.find('%', p + 1);
+    }
+    return format_template_int(tmpl, (long)v);
 }
 
 std::string format_template_str(const std::string &tmpl, const std::string &v) {
@@ -289,21 +474,96 @@ void dispatch(const std::string &line) {
 }
 
 /* ---------------------------------------------------------------------
- * Per-widget callbacks: each Fl_Widget's user_data() points at a
- * heap-allocated ItemBinding that carries what's needed to build the
- * command line. Bindings are owned by the panel and freed on rebuild.
+ * Per-widget bindings and behavior. Each interactive widget stores a
+ * pointer to a heap-allocated ItemBinding (owned by the panel, freed on
+ * rebuild/destroy) carrying whatever it needs to build command lines.
+ *
+ * Sliders and buttons use custom subclasses that drive dispatch directly
+ * from handle(), rather than FLTK's callback()/when() mechanism, because
+ * they each need to distinguish between more event cases (drag vs.
+ * release; press vs. release) than a single callback naturally expresses.
+ * Field/toggle/choice stick with plain callback() since they only ever
+ * fire once per interaction.
  * ------------------------------------------------------------------- */
 
 struct ItemBinding {
-    std::string tmpl;
+    std::string tmpl;        /* slider/field/toggle/choice value template;
+                                 button's release template */
+    std::string tmpl_press;  /* button only: press-time template, may be empty */
     std::vector<std::string> options; /* choice only */
 };
 
-void slider_cb(Fl_Widget *w, void *ud) {
-    ItemBinding *b = (ItemBinding *)ud;
-    double v = ((Fl_Slider *)w)->value();
-    dispatch(format_template_float(b->tmpl, v));
+const int LIVE_THROTTLE_MS = 30;
+
+long now_ms() {
+    using namespace std::chrono;
+    return (long)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 }
+
+/* Slider that dispatches on release always, and additionally (throttled)
+ * during drag when constructed with live=true. Driven from handle()
+ * instead of FLTK's when()/callback() so drag-vs-release can be told
+ * apart cleanly. */
+class LiveSlider : public Fl_Slider {
+public:
+    LiveSlider(int x, int y, int w, int h)
+        : Fl_Slider(x, y, w, h, ""), binding_(NULL), live_(false), last_ms_(0) {
+        when(FL_WHEN_NEVER); /* we call dispatch() ourselves; don't double-fire */
+    }
+
+    void set_binding(ItemBinding *b, bool live) { binding_ = b; live_ = live; }
+
+protected:
+    int handle(int event) override {
+        int r = Fl_Slider::handle(event);
+        if (!binding_) return r;
+        if (event == FL_RELEASE) {
+            dispatch(format_template_float(binding_->tmpl, value()));
+        } else if (live_ && event == FL_DRAG) {
+            long t = now_ms();
+            if (t - last_ms_ >= LIVE_THROTTLE_MS) {
+                last_ms_ = t;
+                dispatch(format_template_float(binding_->tmpl, value()));
+            }
+        }
+        return r;
+    }
+
+private:
+    ItemBinding *binding_;
+    bool live_;
+    long last_ms_;
+};
+
+/* Button with independent press/release messages, for modal/momentary
+ * controls (e.g. a note gate: press to trigger, release to stop). The
+ * release message always fires on FL_RELEASE regardless of where the
+ * mouse ends up -- deliberately not using FLTK's normal "only fire if
+ * released inside the button" click semantics, since for a momentary
+ * control it's safer to send an extra/redundant release than to risk a
+ * stuck press with no matching release (e.g. a held note that never
+ * turns off) if the user drags off the button before releasing. */
+class ModalButton : public Fl_Button {
+public:
+    ModalButton(int x, int y, int w, int h) : Fl_Button(x, y, w, h, ""), binding_(NULL) {}
+
+    void set_binding(ItemBinding *b) { binding_ = b; }
+
+protected:
+    int handle(int event) override {
+        int r = Fl_Button::handle(event);
+        if (!binding_) return r;
+        if (event == FL_PUSH && !binding_->tmpl_press.empty()) {
+            dispatch(binding_->tmpl_press);
+        } else if (event == FL_RELEASE) {
+            if (!binding_->tmpl.empty()) dispatch(binding_->tmpl);
+        }
+        return r;
+    }
+
+private:
+    ItemBinding *binding_;
+};
 
 void field_cb(Fl_Widget *w, void *ud) {
     ItemBinding *b = (ItemBinding *)ud;
@@ -315,11 +575,6 @@ void toggle_cb(Fl_Widget *w, void *ud) {
     ItemBinding *b = (ItemBinding *)ud;
     long v = ((Fl_Check_Button *)w)->value() ? 1 : 0;
     dispatch(format_template_int(b->tmpl, v));
-}
-
-void button_cb(Fl_Widget *, void *ud) {
-    ItemBinding *b = (ItemBinding *)ud;
-    dispatch(b->tmpl); /* fired as-is, no substitution */
 }
 
 void choice_cb(Fl_Widget *w, void *ud) {
@@ -337,10 +592,11 @@ void choice_cb(Fl_Widget *w, void *ud) {
 const int MARGIN = 10;
 const int GAP_Y = 6;
 const int GAP_X = 8;
-const int H_CONTROL = 44;  /* slider/field/choice: label line + control */
+const int H_CONTROL = 44;      /* slider/field/choice: label line + control */
 const int H_TOGGLE = 26;
 const int H_BUTTON = 28;
 const int H_LABEL = 22;
+const int H_GRID_BUTTON = 32;  /* per-cell height inside a button grid */
 
 int item_height(const ParsedItem &it) {
     switch (it.type) {
@@ -359,8 +615,9 @@ int row_height(const ParsedRow &row) {
 }
 
 /* Splits `content_w` horizontally across items with the given weights,
- * returning each item's (x, width). Used both when widgets are first
- * built and again on every window resize, so the two never drift apart. */
+ * returning each item's (x, width). Used when widgets are first built,
+ * again on every window resize, and by button grids (equal weights) --
+ * one implementation, so none of those call sites can drift apart. */
 std::vector<std::pair<int, int> > compute_cols(int content_w, const std::vector<int> &weights) {
     std::vector<std::pair<int, int> > out;
     int n = (int)weights.size();
@@ -381,8 +638,9 @@ std::vector<std::pair<int, int> > compute_cols(int content_w, const std::vector<
 
 /* ---------------------------------------------------------------------
  * Resize-time layout bookkeeping: after widgets are built, one LayoutItem
- * per control records its label/control widget pointers and weight so a
- * window resize can reposition them without re-parsing the DSL.
+ * per row control (and one LayoutGrid per button grid) records widget
+ * pointers/weights so a window resize can reposition everything without
+ * re-parsing the DSL.
  * ------------------------------------------------------------------- */
 
 struct LayoutItem {
@@ -395,6 +653,16 @@ struct LayoutRow {
     std::vector<LayoutItem> items;
 };
 
+struct LayoutGridCell {
+    Fl_Widget *btn;
+    int row, col;
+};
+
+struct LayoutGrid {
+    int y0 = 0, cell_h = 0, rows = 0, cols = 0;
+    std::vector<LayoutGridCell> cells;
+};
+
 } // namespace
 
 /* ---------------------------------------------------------------------
@@ -403,9 +671,10 @@ struct LayoutRow {
 
 struct panel_win {
     Fl_Double_Window *win;
-    Fl_Group *content;                       /* holds all built widgets */
-    std::vector<ItemBinding *> bindings;      /* owned, freed on rebuild/destroy */
-    std::vector<LayoutRow> layout;            /* rebuilt every build_widgets() call */
+    Fl_Group *content;                    /* holds all built widgets */
+    std::vector<ItemBinding *> bindings;  /* owned, freed on rebuild/destroy */
+    std::vector<LayoutRow> layout;        /* rebuilt every build_widgets() call */
+    std::vector<LayoutGrid> grids;        /* rebuilt every build_widgets() call */
 };
 
 namespace {
@@ -417,13 +686,9 @@ void clear_bindings(panel_win_t *pw) {
 
 /* Reflows every widget horizontally to match a new content width W,
  * using the same compute_cols() split used at build time. Row heights
- * and y-positions are left untouched -- only x/width track the window,
- * which is what makes sliders/fields "fill out" as the window widens.
- * If you want rows to also grow/shrink vertically with the window,
- * that's a bigger change (redistributing row heights), noted here
- * rather than attempted, since it's a real design decision (should
- * sliders get taller? should extra space go below the last row?)
- * rather than a mechanical one. */
+ * and y-positions are left untouched -- only x/width track the window.
+ * Button grids follow the same convention: columns track width, rows
+ * stay at their built height/position. */
 void reflow_panel(panel_win_t *pw, int W, int /*H*/) {
     int content_w = W - 2 * MARGIN;
     if (content_w < 1) content_w = 1;
@@ -442,6 +707,20 @@ void reflow_panel(panel_win_t *pw, int W, int /*H*/) {
             if (it.control) it.control->resize(x, it.control->y(), iw, it.control->h());
         }
     }
+
+    for (size_t gi = 0; gi < pw->grids.size(); ++gi) {
+        LayoutGrid &lg = pw->grids[gi];
+        std::vector<int> weights(lg.cols, 1);
+        std::vector<std::pair<int, int> > cols = compute_cols(content_w, weights);
+
+        for (size_t ci = 0; ci < lg.cells.size(); ++ci) {
+            LayoutGridCell &cell = lg.cells[ci];
+            int x = cols[cell.col].first;
+            int w = cols[cell.col].second;
+            int y = lg.y0 + cell.row * (lg.cell_h + GAP_Y);
+            cell.btn->resize(x, y, w, lg.cell_h);
+        }
+    }
 }
 
 /* A window that reflows its panel content horizontally whenever the user
@@ -458,9 +737,6 @@ public:
     void resize(int X, int Y, int W, int H) override {
         Fl_Double_Window::resize(X, Y, W, H);
         if (!owner_) return;
-        /* Keep content filling the window, but bypass Fl_Group's own
-         * resize() (which would proportionally rescale children using
-         * its own heuristics) -- we do that ourselves in reflow_panel(). */
         if (owner_->content) owner_->content->Fl_Widget::resize(0, 0, W, H);
         reflow_panel(owner_, W, H);
     }
@@ -476,12 +752,57 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
     pw->content->clear();
     clear_bindings(pw);
     pw->layout.clear();
+    pw->grids.clear();
 
     int content_w = pwin.width - 2 * MARGIN;
     int y = MARGIN;
 
-    for (size_t ri = 0; ri < pwin.rows.size(); ++ri) {
-        const ParsedRow &row = pwin.rows[ri];
+    for (size_t bi = 0; bi < pwin.blocks.size(); ++bi) {
+        const ParsedBlock &block = pwin.blocks[bi];
+
+        if (block.kind == BK_GRID) {
+            const ParsedGrid &g = block.grid;
+            std::vector<int> weights(g.cols, 1);
+            std::vector<std::pair<int, int> > cols = compute_cols(content_w, weights);
+
+            LayoutGrid lg;
+            lg.y0 = y;
+            lg.cell_h = H_GRID_BUTTON;
+            lg.rows = g.rows;
+            lg.cols = g.cols;
+
+            for (int r = 0; r < g.rows; ++r) {
+                int cell_y = y + r * (H_GRID_BUTTON + GAP_Y);
+                for (int c = 0; c < g.cols; ++c) {
+                    int idx = r * g.cols + c;
+                    if (idx >= (int)g.buttons.size()) continue; /* empty cell */
+                    const ParsedItem &it = g.buttons[idx];
+
+                    ItemBinding *bind = new ItemBinding();
+                    bind->tmpl = it.tmpl;
+                    bind->tmpl_press = it.tmpl_press;
+                    pw->bindings.push_back(bind);
+
+                    ModalButton *b = new ModalButton(cols[c].first, cell_y, cols[c].second, H_GRID_BUTTON);
+                    b->copy_label(it.name.c_str());
+                    b->align(FL_ALIGN_CENTER); /* centered on both axes; Fl_Button's default, set explicitly */
+                    b->set_binding(bind);
+                    pw->content->add(b);
+
+                    LayoutGridCell cell;
+                    cell.btn = b; cell.row = r; cell.col = c;
+                    lg.cells.push_back(cell);
+                }
+            }
+
+            pw->grids.push_back(lg);
+            int grid_h = g.rows * H_GRID_BUTTON + (g.rows - 1) * GAP_Y;
+            y += grid_h + GAP_Y;
+            continue;
+        }
+
+        /* BK_ROW */
+        const ParsedRow &row = block.row;
         int rh = row_height(row);
 
         std::vector<int> weights;
@@ -499,6 +820,7 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
             if (it.type != IT_LABEL) {
                 bind = new ItemBinding();
                 bind->tmpl = it.tmpl;
+                bind->tmpl_press = it.tmpl_press;
                 bind->options = it.options;
                 pw->bindings.push_back(bind);
             }
@@ -512,12 +834,12 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     Fl_Box *lbl = new Fl_Box(x, y, iw, 14, "");
                     lbl->copy_label(label.c_str());
                     lbl->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
-                    Fl_Slider *s = new Fl_Slider(x, y + 16, iw, rh - 16, "");
+                    LiveSlider *s = new LiveSlider(x, y + 16, iw, rh - 16);
                     s->type(FL_HOR_NICE_SLIDER);
                     s->bounds(it.min, it.max);
+                    if (it.has_step) s->step(it.step);
                     s->value(it.has_default ? it.default_num : (it.min + it.max) / 2.0);
-                    s->callback(slider_cb, bind);
-                    s->when(FL_WHEN_RELEASE);
+                    s->set_binding(bind, it.live);
                     pw->content->add(lbl);
                     pw->content->add(s);
                     litem.label = lbl;
@@ -550,9 +872,10 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     break;
                 }
                 case IT_BUTTON: {
-                    Fl_Button *b = new Fl_Button(x, y, iw, rh, "");
+                    ModalButton *b = new ModalButton(x, y, iw, rh);
                     b->copy_label(it.name.c_str());
-                    b->callback(button_cb, bind);
+                    b->align(FL_ALIGN_CENTER);
+                    b->set_binding(bind);
                     pw->content->add(b);
                     litem.control = b;
                     break;

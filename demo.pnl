@@ -1,10 +1,17 @@
 window "demo" 800 400
 
-slider note 0 127 midi "v0 n%d" =69
+slider note 0 127 midi "=10,%f" =69 ~live
 
-slider duration   0 7  "DL $1 %d - - - - -" =0
-slider multply    0 15 "DL $1 - %d - - - -" =0
-slider feedback   0 15 "DL $1 - - %d - - -" =0
-slider modulation 0 31 "DL $1 - - - %d - -" =0
-slider depth      0 31 "DL $1 - - - - %d -" =0
-slider amount     0 15 "DL $1 - - - - - %d" =0
+slider duration   0 7  "DL $1 %d - - - - -" =0 ~live
+slider multply    0 15 "DL $1 - %d - - - -" =0 ~live
+slider feedback   0 15 "DL $1 - - %d - - -" =0 ~live
+slider modulation 0 31 "DL $1 - - - %d - -" =0 ~live
+slider depth      0 31 "DL $1 - - - - %d -" =0 ~live
+slider amount     0 15 "DL $1 - - - - - %d" =0 ~live
+
+grid 2 2
+  button kick "v10 l1"
+  button snare "v11 l1"
+  button chh "v12 l1"
+  button cb "v12 l1"
+endgrid

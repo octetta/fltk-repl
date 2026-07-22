@@ -66,7 +66,8 @@ void repl_prefs_destroy(repl_prefs *prefs);
  * Persistence
  * --------------------------------------------------------------------- */
 
-/* Write changes to disk if dirty. Returns non-zero on success. */
+/* Write changes to disk if dirty. Returns -1 on error, 0 if written, and 1 if
+ * there was nothing to write. */
 int repl_prefs_flush(repl_prefs *prefs);
 
 /* Returns non-zero if there are unsaved changes. */

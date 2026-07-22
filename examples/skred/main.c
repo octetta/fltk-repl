@@ -402,13 +402,40 @@ static void panel_to_skred(const char *line, void *user_data) {
     }
 }
 
-static repl_prefs *g_prefs;
+static void load_appearance_preferences(repl_prefs *prefs, repl_ctx *repl) {
+    char theme[16];
+    char fontName[256];
+    int fontSize;
+
+    repl_prefs_get_string(prefs, "theme", theme, sizeof(theme),
+                          repl_get_theme(repl) == REPL_THEME_LIGHT ? "light" : "dark");
+    if (strcmp(theme, "light") == 0) {
+        repl_set_theme(repl, REPL_THEME_LIGHT);
+    } else if (strcmp(theme, "dark") == 0) {
+        repl_set_theme(repl, REPL_THEME_DARK);
+    }
+
+    repl_prefs_get_string(prefs, "fontname", fontName, sizeof(fontName),
+                          repl_get_font_name(repl));
+    repl_prefs_get_int(prefs, "fontsize", &fontSize, repl_get_font_size(repl));
+    if (fontSize <= 0) fontSize = repl_get_font_size(repl);
+    if (!repl_set_font(repl, fontName, fontSize)) {
+        fprintf(stderr, "saved font is not available: %s\n", fontName);
+    }
+}
+
+static void save_appearance_preferences(repl_prefs *prefs, repl_ctx *repl) {
+    const char *theme = repl_get_theme(repl) == REPL_THEME_LIGHT ? "light" : "dark";
+
+    repl_prefs_set_string(prefs, "theme", theme);
+    repl_prefs_set_string(prefs, "fontname", repl_get_font_name(repl));
+    repl_prefs_set_int(prefs, "fontsize", repl_get_font_size(repl));
+    if (repl_prefs_flush(prefs) < 0) {
+        fprintf(stderr, "could not write skrepl preferences\n");
+    }
+}
 
 int main(int argc, char **argv) {
-    
-    g_prefs = repl_prefs_create(REPL_PREFS_USER, "octetta", "skrepl");
-    repl_prefs_set_string(g_prefs, "theme", "dark");
-    
     unsigned int voices = 32;
     unsigned int frames = 128;
     int port = 0;
@@ -417,6 +444,7 @@ int main(int argc, char **argv) {
     int check_only = 0;
     int i;
     app_state app;
+    repl_prefs *prefs;
 
     memset(&app, 0, sizeof(app));
 
@@ -475,11 +503,19 @@ int main(int argc, char **argv) {
     g_output = output;
     g_input = input;
 
+    prefs = repl_prefs_create(REPL_PREFS_USER, "octetta", "skrepl");
+    if (!prefs) {
+        fprintf(stderr, "could not open skrepl preferences\n");
+        return 1;
+    }
+
     app.repl = repl_create("skrepl", 960, 680);
     if (!app.repl) {
         fprintf(stderr, "could not create the FLTK REPL window\n");
+        repl_prefs_destroy(prefs);
         return 1;
     }
+    load_appearance_preferences(prefs, app.repl);
 
     repl_set_prompt(app.repl, "# ");
     repl_register_default_commands(app.repl);
@@ -500,7 +536,9 @@ int main(int argc, char **argv) {
         repl_println(app.repl, "Could not start the Skred audio engine.");
         repl_println(app.repl, "Close this window after reviewing the message.");
         repl_run(app.repl);
+        save_appearance_preferences(prefs, app.repl);
         repl_destroy(app.repl);
+        repl_prefs_destroy(prefs);
         return 1;
     }
 
@@ -518,9 +556,9 @@ int main(int argc, char **argv) {
     topology_hide();
     skred_control_dispatch_stop();
     skred_stop();
+    save_appearance_preferences(prefs, app.repl);
     repl_destroy(app.repl);
-
-    repl_prefs_flush(g_prefs);
+    repl_prefs_destroy(prefs);
 
     return i;
 }

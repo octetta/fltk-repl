@@ -441,6 +441,14 @@ void repl_set_font_size(repl_ctx *ctx, int size) {
     ctx->term->setFont(f, size);
 }
 
+const char *repl_get_font_name(repl_ctx *ctx) {
+    return ctx ? ctx->font_name.c_str() : nullptr;
+}
+
+int repl_get_font_size(repl_ctx *ctx) {
+    return ctx ? ctx->font_size : 0;
+}
+
 int repl_list_fonts_filtered(repl_ctx *, char *buf, int buf_capacity,
                               int monospace_only, int size) {
     if (!buf || buf_capacity <= 0) return 0;
