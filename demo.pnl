@@ -1,0 +1,10 @@
+window "demo" 800 400
+
+slider note 0 127 midi "v0 n%d" =69
+
+slider duration   0 7  "DL $1 %d - - - - -" =0
+slider multply    0 15 "DL $1 - %d - - - -" =0
+slider feedback   0 15 "DL $1 - - %d - - -" =0
+slider modulation 0 31 "DL $1 - - - %d - -" =0
+slider depth      0 31 "DL $1 - - - - %d -" =0
+slider amount     0 15 "DL $1 - - - - - %d" =0

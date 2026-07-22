@@ -6,6 +6,7 @@
  * skred_command().
  */
 #include "repl/repl_api.h"
+#include "repl/repl_prefs.h"
 #include "repl/bitmap_win.h"
 #include "repl/panel_dsl.h"
 #include "SpectrogramBridge.h"
@@ -29,6 +30,7 @@
 #define FLTK_REPL_PIKCHR_VERSION "unknown"
 #endif
 
+#define SKRED_URL "https://github.com/octetta/pulp"
 #define SKREPL_GITHUB_URL "https://github.com/octetta/fltk-repl"
 #define OCTETTA_YOUTUBE_URL "https://www.youtube.com/@octetta"
 #define OCTETTA_LINKEDIN_URL "https://www.linkedin.com/in/octetta"
@@ -86,7 +88,7 @@ static const char *miniaudio_version(void) {
 }
 
 static void print_banner_stdout(void) {
-    printf(" _                 _ \n");
+    printf("     _                 _ \n");
     printf(" ___| | ___ __ ___  __| |\n");
     printf("/ __| |/ / '__/ _ \\/ _  |\n");
     printf("\\__ \\   <| | |  __/ (_| |\n");
@@ -94,22 +96,26 @@ static void print_banner_stdout(void) {
 }
 
 static void print_banner_repl(app_state *app) {
-    repl_println(app->repl, "     _                 _ ");
-    repl_println(app->repl, " ___| | ___ __ ___  __| |");
-    repl_println(app->repl, "/ __| |/ / '__/ _ \\/ _  |");
-    repl_println(app->repl, "\\__ \\   <| | |  __/ (_| |");
-    repl_println(app->repl, "|___/_|\\_\\_|  \\___|\\__,_|");
+    repl_println(app->repl, "      _                  _ ");
+    repl_println(app->repl, " ____| | ___ __ ____  __| |");
+    repl_println(app->repl, "/ ___| |/ / '__/ __ \\/ _  |");
+    repl_println(app->repl, "\\___ \\   <| | |  ___/ (_| |");
+    repl_println(app->repl, "|____/_|\\_\\_|  \\____|\\__,_|");
 }
 
 static void print_release_info_stdout(void) {
     print_banner_stdout();
+    printf("Copyright (c) 2023- Joseph Ellis Stewart / octetta\n");
     printf("skrepl %s\n", FLTK_REPL_VERSION);
     printf("Built %s\n", FLTK_REPL_BUILD_DATE);
     printf("Skred %s\n", skred_version());
+#if 0
     printf("FLTK %s\n", FLTK_REPL_FLTK_VERSION);
     printf("miniaudio %s\n", miniaudio_version());
     printf("Pikchr %s\n", FLTK_REPL_PIKCHR_VERSION);
-    printf("GitHub: " SKREPL_GITHUB_URL "\n");
+#endif
+    printf("source: " SKREPL_GITHUB_URL "\n");
+    printf("PULP/skred: " SKRED_URL "\n");
     printf("YouTube: " OCTETTA_YOUTUBE_URL "\n");
     printf("LinkedIn: " OCTETTA_LINKEDIN_URL "\n");
     printf("%s\n", skred_features());
@@ -117,13 +123,15 @@ static void print_release_info_stdout(void) {
 
 static void print_release_info_repl(app_state *app) {
     print_banner_repl(app);
-    repl_printf(app->repl, "skrepl %s\n", FLTK_REPL_VERSION);
+    repl_printf(app->repl, "Copyright (c) 2023- Joseph Ellis Stewart / octetta\n");
+    repl_printf(app->repl, "skrepl %s (skred %s)\n", FLTK_REPL_VERSION, skred_version());
     repl_printf(app->repl, "Built %s\n", FLTK_REPL_BUILD_DATE);
-    repl_printf(app->repl, "Skred %s\n", skred_version());
+#if 0
     repl_printf(app->repl, "FLTK %s\n", FLTK_REPL_FLTK_VERSION);
     repl_printf(app->repl, "miniaudio %s\n", miniaudio_version());
     repl_printf(app->repl, "Pikchr %s\n", FLTK_REPL_PIKCHR_VERSION);
-    repl_println(app->repl, "GitHub: " SKREPL_GITHUB_URL);
+#endif
+    repl_println(app->repl, "source: " SKREPL_GITHUB_URL);
     repl_println(app->repl, "YouTube: " OCTETTA_YOUTUBE_URL);
     repl_println(app->repl, "LinkedIn: " OCTETTA_LINKEDIN_URL);
     repl_printf(app->repl, "%s\n", skred_features());
@@ -307,6 +315,15 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
     skred_line(line, userdata);
 }
 
+static void cmd_credits(int argc, char **argv, void *userdata) {
+    app_state *app = (app_state *)userdata;
+    if (app) {
+        repl_printf(app->repl, "FLTK %s\n", FLTK_REPL_FLTK_VERSION);
+        repl_printf(app->repl, "miniaudio %s\n", miniaudio_version());
+        repl_printf(app->repl, "Pikchr %s\n", FLTK_REPL_PIKCHR_VERSION);
+    }
+}
+
 static void cmd_boot(int argc, char **argv, void *userdata) {
     app_state *app = (app_state *)userdata;
     int changed = 0;
@@ -358,6 +375,7 @@ static void gui_help(int argc, char **argv, void *userdata) {
         "  topology <voice> [depth] show /vg voice topology\n"
         "  panel load <file.pnl> | reload | hide\n"
         "  boot [voices N] [frames N] [port N]   restart Skred\n"
+        "  credits\n"
         "  quit / exit              stop everything\n"
         "\n"
         "Every other line is sent to Skred.");
@@ -384,7 +402,13 @@ static void panel_to_skred(const char *line, void *user_data) {
     }
 }
 
+static repl_prefs *g_prefs;
+
 int main(int argc, char **argv) {
+    
+    g_prefs = repl_prefs_create(REPL_PREFS_USER, "octetta", "skrepl");
+    repl_prefs_set_string(g_prefs, "theme", "dark");
+    
     unsigned int voices = 32;
     unsigned int frames = 128;
     int port = 0;
@@ -463,6 +487,7 @@ int main(int argc, char **argv) {
     repl_register_command(app.repl, "exit", cmd_quit, &app);
     repl_register_command(app.repl, "help", gui_help, &app);
     repl_register_command(app.repl, "boot", cmd_boot, &app);
+    repl_register_command(app.repl, "credits", cmd_credits, &app);
     repl_set_fallback_handler(app.repl, bitmap_panel_handler, &app);
     panel_set_command_handler(panel_to_skred, NULL);
 
@@ -485,8 +510,8 @@ int main(int argc, char **argv) {
 
     skred_logger(1);
     repl_println(app.repl,
-        "Ready. Type 'help' for commands.\n"
-        "Example: boot voices 48 frames 256");
+        "Type 'help' for REPL commands.\n"
+        "Type '/h' for SKODE commands");
 
     i = repl_run(app.repl);
     skred_spectrogram_unbind();
@@ -494,5 +519,8 @@ int main(int argc, char **argv) {
     skred_control_dispatch_stop();
     skred_stop();
     repl_destroy(app.repl);
+
+    repl_prefs_flush(g_prefs);
+
     return i;
 }

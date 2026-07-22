@@ -56,6 +56,7 @@ add_library(replfltk STATIC
     src/VoiceTopology.cpp src/VoiceTopology.h
     src/bitmap_win.cpp src/panel_dsl.cpp
     include/repl/bitmap_win.h include/repl/panel_dsl.h
+    src/repl_prefs.cpp
 )
 
 target_include_directories(replfltk PUBLIC include PRIVATE src)
