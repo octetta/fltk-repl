@@ -3,10 +3,14 @@
 
 /*
  * bitmap_win: a small, optional graphics-output window for Skred commands.
+ * Supports any number of independently-named windows.
  *
  * Usage from a command handler:
  *
- *   bitmap_win_t *bw = bitmap_win_get("scope");   // name is the window key
+ *   bitmap_win_t *bw = bitmap_win_get("scope");   // creates "scope" the
+ *                                                  // first time, returns
+ *                                                  // the same window on
+ *                                                  // every call after
  *   bitmap_win_set_gray(bw, buf, w, h);
  *   bitmap_win_show(bw);
  *
@@ -26,12 +30,13 @@ extern "C" {
 
 typedef struct bitmap_win bitmap_win_t;
 
-/* Get or create the bitmap window registered under `name`. */
+/* Get (creating on first use) the bitmap window registered under `name`.
+ * Each distinct name gets its own independent window; calling this again
+ * with the same name always returns that same window. */
 bitmap_win_t *bitmap_win_get(const char *name);
 
 void bitmap_win_show(bitmap_win_t *bw);
 void bitmap_win_hide(bitmap_win_t *bw);
-void bitmap_win_hide_all(void);
 int  bitmap_win_visible(const bitmap_win_t *bw);
 
 /* Replace the displayed image. Data is copied internally, so the caller's
@@ -75,7 +80,17 @@ int bitmap_win_set_waveform_ex(bitmap_win_t *bw, const float *samples,
                                float sample_rate);
 
 void bitmap_win_clear(bitmap_win_t *bw);
+
+/* Sets what's shown in the window's title bar. Does not affect the name
+ * used to look the window up via bitmap_win_get() -- that stays whatever
+ * was passed in originally. */
 void bitmap_win_set_title(bitmap_win_t *bw, const char *title);
+
+/* Hides/destroys every bitmap window that's been created via
+ * bitmap_win_get() so far, regardless of name. Useful for a single
+ * "quit" or "close everything" cleanup path. */
+void bitmap_win_hide_all(void);
+void bitmap_win_destroy_all(void);
 
 #ifdef __cplusplus
 }

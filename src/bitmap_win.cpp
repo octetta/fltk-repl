@@ -165,7 +165,6 @@ void close_cb(Fl_Widget *w, void *) {
 } // namespace
 
 struct bitmap_win {
-    std::string key;
     std::string name;
     Fl_Double_Window *win;
     BitmapView *view;
@@ -174,21 +173,19 @@ struct bitmap_win {
 /* --- registry -------------------------------------------------------
  * Deliberately a flat vector + linear search: the number of named bitmap
  * windows is expected to stay small (single digits), so this is simpler
- * and just as fast in practice as a hash map. Swap the storage here if
- * that assumption ever stops holding -- no caller changes needed either
- * way, since bitmap_win_get() is the only entry point.
+ * and just as fast in practice as a hash map.
  */
 static std::vector<bitmap_win_t *> g_registry;
 
 static bitmap_win_t *find_or_create(const char *name) {
     std::string key = name ? name : "bitmap";
-    for (auto *bw : g_registry) {
-        if (bw->key == key) return bw;
+
+    for (size_t i = 0; i < g_registry.size(); ++i) {
+        if (g_registry[i]->name == key) return g_registry[i];
     }
 
     const int default_w = 512, default_h = 384;
     bitmap_win_t *bw = new bitmap_win();
-    bw->key = key;
     bw->name = key;
     bw->win = new Fl_Double_Window(default_w, default_h, key.c_str());
     bw->view = new BitmapView(0, 0, default_w, default_h);
@@ -214,12 +211,6 @@ void bitmap_win_show(bitmap_win_t *bw) {
 void bitmap_win_hide(bitmap_win_t *bw) {
     if (!bw) return;
     bw->win->hide();
-}
-
-void bitmap_win_hide_all(void) {
-    for (auto *bw : g_registry) {
-        if (bw && bw->win) bw->win->hide();
-    }
 }
 
 int bitmap_win_visible(const bitmap_win_t *bw) {
@@ -319,8 +310,23 @@ void bitmap_win_clear(bitmap_win_t *bw) {
 
 void bitmap_win_set_title(bitmap_win_t *bw, const char *title) {
     if (!bw || !title) return;
-    bw->name = title;
-    bw->win->label(bw->name.c_str());
+    /* Only changes what's shown in the window's title bar -- deliberately
+     * does NOT touch bw->name, which is the registry lookup key set at
+     * bitmap_win_get() time. Changing that here would silently break a
+     * later bitmap_win_get() call using the original name. */
+    bw->win->copy_label(title);
+}
+
+void bitmap_win_hide_all(void) {
+    for (size_t i = 0; i < g_registry.size(); ++i) g_registry[i]->win->hide();
+}
+
+void bitmap_win_destroy_all(void) {
+    for (size_t i = 0; i < g_registry.size(); ++i) {
+        delete g_registry[i]->win; /* deletes the contained BitmapView too */
+        delete g_registry[i];
+    }
+    g_registry.clear();
 }
 
 } // extern "C"

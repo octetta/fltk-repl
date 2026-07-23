@@ -273,36 +273,38 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
     }
 
     if (strcmp(cmd, "panel") == 0) {
-        static panel_win_t *pw = NULL;
-        static char last_path[512] = "controls.pnl";
+        char pname[64] = {0}, rest[192] = {0};
+        int n2 = (n >= 2) ? sscanf(arg, "%63s %191[^\n]", pname, rest) : 0;
 
-        if (n >= 2 && strncmp(arg, "load ", 5) == 0) {
-            const char *path = arg + 5;
-            strncpy(last_path, path, sizeof(last_path)-1);
-            last_path[sizeof(last_path)-1] = '\0';
-            if (pw) panel_destroy(pw);
-            pw = panel_load_file(path);
-            if (pw) {
-                panel_show(pw);
-            } else {
-                repl_println(app->repl, "Panel load failed — check stderr for details");
-            }
-            return;
-        }
-        if (n >= 2 && strcmp(arg, "reload") == 0) {
-            if (pw) {
-                if (panel_reload_file(pw, last_path) == 0) {
-                    repl_println(app->repl, "Panel reloaded successfully.");
+        if (n2 >= 2 && strcmp(pname, "load") == 0) {
+            char panel_name[64] = {0}, path[192] = {0};
+            /* "panel load <name> <path>" -- a short label plus the file,
+             * so several panels can be open at once and reloaded/hidden
+             * independently by name (e.g. "envelope", "pads"). */
+            int n3 = sscanf(rest, "%63s %191s", panel_name, path);
+            if (n3 == 2) {
+                panel_win_t *p = panel_registry_load(panel_name, path);
+                if (p) {
+                    panel_registry_show(panel_name);
                 } else {
-                    repl_println(app->repl, "Panel reload failed.");
+                    repl_println(app->repl, "Panel load failed — check stderr for details");
                 }
+            } else {
+                repl_println(app->repl, "usage: panel load <name> <file.pnl>");
             }
             return;
         }
-        if (n >= 2 && strcmp(arg, "hide") == 0) {
-            if (pw) panel_hide(pw);
+        if (n2 >= 2 && strcmp(pname, "reload") == 0) {
+            if (panel_registry_reload(rest) == 0) {
+                repl_println(app->repl, "Panel reloaded successfully.");
+            } else {
+                repl_println(app->repl, "Panel reload failed (unknown name, or check stderr).");
+            }
             return;
         }
+        if (n2 >= 2 && strcmp(pname, "show") == 0) { panel_registry_show(rest); return; }
+        if (n2 >= 2 && strcmp(pname, "hide") == 0) { panel_registry_hide(rest); return; }
+        repl_println(app->repl, "usage: panel load <name> <file.pnl> | reload <name> | show <name> | hide <name>");
         return;
     }
 
@@ -370,7 +372,7 @@ static void gui_help(int argc, char **argv, void *userdata) {
         "  spectrogram wave <slot> | record [-1|0|1]\n"
         "  waveform wave <slot> | record [-1|0|1]\n"
         "  topology <voice> [depth] show /vg voice topology\n"
-        "  panel load <file.pnl> | reload | hide\n"
+        "  panel load <name> <file.pnl> | reload <name> | show <name> | hide <name>\n"
         "  boot [voices N] [frames N] [port N]   restart Skred\n"
         "  credits\n"
         "  quit / exit              stop everything\n"

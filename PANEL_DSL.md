@@ -105,7 +105,9 @@ slider cutoff 20 20000 Hz "filter_cutoff_set %d" =800 ~live
   it changes.
 
 By default, fires on **mouse release** only. With `~live`, also fires
-(throttled) while dragging — see [Update timing](#update-timing).
+(throttled) while dragging — see [Update timing](#update-timing). When
+a `step` is set, clicking the track (not dragging) pages the value by
+one step, scrollbar-style — see [Click and drag behavior](#click-and-drag-behavior-slider).
 
 ---
 
@@ -327,6 +329,37 @@ env_attack_set 1800
 
 ---
 
+## Click and drag behavior (slider)
+
+When a slider has a `step`, clicking directly on the track behaves like
+a classic scrollbar trough click rather than jumping the thumb to the
+click position:
+
+- **Click without moving the mouse** (press and release in about the
+  same spot) — the value moves by exactly **one step**, toward whichever
+  side of the thumb you clicked. This applies no matter how close to the
+  thumb you click, not just clicks far away from it.
+- **Click and actually drag** (move the mouse past a few pixels before
+  releasing) — this is a real drag: the thumb follows the mouse
+  continuously, snapping to step increments the whole way (via FLTK's
+  own value-rounding once `step()` is set), exactly like dragging
+  already worked before trough clicks were added.
+
+The distinction is made by whether the mouse moves, not by hit-testing
+the rendered thumb's pixel bounds — trying to guess the thumb's exact
+on-screen size turned out to be fragile in practice, so the click-vs-
+drag decision is based purely on movement instead.
+
+Without a `step`, none of this applies: the slider behaves exactly like
+a plain FLTK slider (click jumps to position, continuous drag).
+
+The value shown next to the slider's label updates immediately after
+every one of these interactions, whether it's a stepped click or a
+drag — see [`slider`](#slider--continuous-numeric-control) for the
+label format.
+
+---
+
 ## Update timing
 
 - **Sliders** fire on mouse release by default, not per-pixel while
@@ -345,19 +378,27 @@ env_attack_set 1800
 
 ## Resizing
 
-Panel windows are live-resizable. Dragging the window wider or narrower
-reflows every slider, field, toggle, button, and choice horizontally to
-match, using the same weighted column split described under
-[Modifiers](#modifiers-weight-default-flag). Button grid columns track
-width the same way, keeping every cell equal-width. Row heights and
-vertical layout are fixed — only horizontal space redistributes. A
-minimum window size is enforced so controls can't be crushed by
-shrinking too far.
+Panel windows are live-resizable.
 
-Vertical space does **not** currently adapt (rows/grid rows don't grow
-taller, and extra height beyond the content doesn't get redistributed)
-— that's a deliberate scope cut, not an oversight, since "which rows get
-the extra height" is a real design choice rather than a mechanical one.
+**Horizontally:** dragging the window wider or narrower reflows every
+slider, field, toggle, button, and choice to match, using the same
+weighted column split described under
+[Modifiers](#modifiers-weight-default-flag). Button grid columns track
+width the same way, keeping every cell equal-width.
+
+**Vertically:** row heights and vertical layout stay fixed — a `row`,
+`slider`, `field`, etc. never gets taller. **Button grids are the
+exception:** any extra window height beyond what the panel originally
+needed is handed to grids, growing their cell height (and therefore
+overall grid height) so a grid actually fills a taller window, split
+evenly per grid-row across however many grids the panel has. Rows and
+grids below a grid that grew are pushed down to match. The window never
+shrinks anything below its originally-built size — making the window
+*shorter* than its content just lets the window clip it, rather than
+compressing controls to fit.
+
+A minimum window size is enforced so controls can't be crushed by
+shrinking too far.
 
 ---
 
@@ -454,3 +495,59 @@ widgets in place, keeping the same window. If the edited file has a
 parse error, the existing panel is left untouched and the error is
 printed to `stderr` — a bad edit during a live session can't leave you
 with a half-rebuilt or blank panel.
+
+**Widget values are retained across a reload**, matched by each
+control's DSL name — if you've turned a knob, checked a box, typed into
+a field, or picked a dropdown option, those live values survive editing
+and reloading the file, rather than snapping back to the file's
+`=default`s. This is deliberately name-based and best-effort:
+
+- A control whose name is unchanged between the old and new file keeps
+  its live value (subject to the new file's `min`/`max`, e.g. a slider
+  retains its value only if it still falls in range).
+- A brand-new control (new name) starts at its own `=default`/fallback,
+  same as a fresh load.
+- A removed control's old value is simply discarded.
+- If a name's *type* changes across a reload (e.g. it was a `toggle`
+  and is now a `slider`), the old value isn't carried over — the new
+  widget just uses its own fresh default. This is a deliberate
+  conservative choice rather than trying to coerce a value across
+  incompatible types.
+- Nothing is re-sent to Skred on reload — retained values reflect UI
+  state only; since the engine's actual parameter values haven't
+  changed, there's nothing that needs re-dispatching.
+
+---
+
+## Multiple panels
+
+Nothing about this DSL or its C API limits you to one panel window.
+Every `panel_load_file()`/`panel_load_string()` call returns its own
+independent `panel_win_t`, with its own window and widget state — load
+as many as you want (an envelope panel, a pads panel, a mixer panel,
+...) and they operate completely independently.
+
+For convenience, an optional **named registry** is included so you
+don't have to hand-roll a `name -> panel_win_t*` map yourself if you're
+managing several panels from one command dispatcher:
+
+```c
+panel_registry_load("envelope", "envelope.pnl");   // loads (or replaces) the "envelope" slot
+panel_registry_load("pads", "pads.pnl");
+panel_registry_show("envelope");
+panel_registry_show("pads");
+
+/* later, e.g. from a `panel reload envelope` REPL command: */
+panel_registry_reload("envelope");                 // re-reads envelope.pnl, keeps the "pads" panel untouched
+
+panel_registry_get("envelope");                     // -> panel_win_t*, or NULL if not loaded
+panel_registry_hide("pads");
+panel_registry_destroy("pads");
+```
+
+`panel_registry_load()` on a name that's already loaded destroys the
+old instance first and loads fresh in its place (this does *not* retain
+values the way `panel_reload_file()` does — use `panel_registry_reload()`
+for that; `_load()` is for genuinely swapping in a different file).
+The registry is entirely optional — the plain `panel_load_*`/`panel_*`
+functions work standalone with no registry involvement at all.
