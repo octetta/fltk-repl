@@ -96,6 +96,11 @@ static void print_banner_stdout(void) {
 }
 
 static void print_banner_repl(app_state *app) {
+  repl_println(app->repl, " ⢀⣀ ⡇⡠ ⡀⣀ ⢀⡀ ⣀⡀ ⡇");
+  repl_println(app->repl, " ⠭⠕ ⠏⠢ ⠏  ⠣⠭ ⡧⠜ ⠣");
+}
+
+static void ex_print_banner_repl(app_state *app) {
     repl_println(app->repl, "      _                  _ ");
     repl_println(app->repl, " ____| | ___ __ ____  __| |");
     repl_println(app->repl, "/ ___| |/ / '__/ __ \\/ _  |");
@@ -105,15 +110,10 @@ static void print_banner_repl(app_state *app) {
 
 static void print_release_info_stdout(void) {
     print_banner_stdout();
-    printf("Copyright (c) 2023- Joseph Ellis Stewart / octetta\n");
+    printf("Copyright (c) 2023-2525 octetta\n");
     printf("skrepl %s\n", FLTK_REPL_VERSION);
     printf("Built %s\n", FLTK_REPL_BUILD_DATE);
     printf("Skred %s\n", skred_version());
-#if 0
-    printf("FLTK %s\n", FLTK_REPL_FLTK_VERSION);
-    printf("miniaudio %s\n", miniaudio_version());
-    printf("Pikchr %s\n", FLTK_REPL_PIKCHR_VERSION);
-#endif
     printf("source: " SKREPL_GITHUB_URL "\n");
     printf("PULP/skred: " SKRED_URL "\n");
     printf("YouTube: " OCTETTA_YOUTUBE_URL "\n");
@@ -123,14 +123,9 @@ static void print_release_info_stdout(void) {
 
 static void print_release_info_repl(app_state *app) {
     print_banner_repl(app);
-    repl_printf(app->repl, "Copyright (c) 2023- Joseph Ellis Stewart / octetta\n");
-    repl_printf(app->repl, "skrepl %s (skred %s)\n", FLTK_REPL_VERSION, skred_version());
+    repl_printf(app->repl, "Copyright (c) 2023-2525 octetta\n");
+    repl_printf(app->repl, "skrepl %s using SKRED %s\n", FLTK_REPL_VERSION, skred_version());
     repl_printf(app->repl, "Built %s\n", FLTK_REPL_BUILD_DATE);
-#if 0
-    repl_printf(app->repl, "FLTK %s\n", FLTK_REPL_FLTK_VERSION);
-    repl_printf(app->repl, "miniaudio %s\n", miniaudio_version());
-    repl_printf(app->repl, "Pikchr %s\n", FLTK_REPL_PIKCHR_VERSION);
-#endif
     repl_println(app->repl, "source: " SKREPL_GITHUB_URL);
     repl_println(app->repl, "YouTube: " OCTETTA_YOUTUBE_URL);
     repl_println(app->repl, "LinkedIn: " OCTETTA_LINKEDIN_URL);
@@ -318,6 +313,8 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
 static void cmd_credits(int argc, char **argv, void *userdata) {
     app_state *app = (app_state *)userdata;
     if (app) {
+        ex_print_banner_repl(app);
+        repl_printf(app->repl, "SKRED %s\n", skred_version());
         repl_printf(app->repl, "FLTK %s\n", FLTK_REPL_FLTK_VERSION);
         repl_printf(app->repl, "miniaudio %s\n", miniaudio_version());
         repl_printf(app->repl, "Pikchr %s\n", FLTK_REPL_PIKCHR_VERSION);

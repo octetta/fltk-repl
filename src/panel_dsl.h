@@ -143,6 +143,19 @@ void panel_show(panel_win_t *pw);
 void panel_hide(panel_win_t *pw);
 void panel_destroy(panel_win_t *pw);
 
+/* Named panel registry (optional convenience layer). The functions
+ * above already fully support multiple independent panels -- every
+ * panel_load_file()/panel_load_string() call is its own instance, with
+ * no hidden single-panel limit. This registry is just a convenience for
+ * managing several named panels (e.g. "envelope", "pads", "mixer") from
+ * a command dispatcher without hand-rolling a name -> panel_win_t map. */
+panel_win_t *panel_registry_load(const char *name, const char *path); /* loads/replaces the named slot */
+panel_win_t *panel_registry_get(const char *name);                     /* NULL if not loaded */
+int panel_registry_reload(const char *name);                           /* reload from the path used at load */
+void panel_registry_show(const char *name);
+void panel_registry_hide(const char *name);
+void panel_registry_destroy(const char *name);
+
 #ifdef __cplusplus
 }
 #endif
