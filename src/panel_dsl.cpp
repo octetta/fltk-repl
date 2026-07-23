@@ -70,8 +70,6 @@ struct ParsedBlock {
     ParsedGrid grid;
 };
 
-std::string grouco = "groucho";
-
 struct ParsedWindow {
     std::string title = "Panel";
     int width = 320;
@@ -123,6 +121,65 @@ bool looks_numeric(const std::string &s) {
     char *end = NULL;
     strtod(s.c_str(), &end);
     return end != s.c_str() && *end == '\0';
+}
+
+/* Load-time ${name} substitution, applied to the raw DSL text *before*
+ * tokenizing/parsing -- so it works anywhere in the file (title,
+ * templates, even numeric fields) with no per-statement special-casing.
+ * This is deliberately a different mechanism from %d/%f/%s: those
+ * resolve every time a widget fires (its current value); ${name}
+ * resolves once, at load time, to build one instantiated copy of a
+ * template file (e.g. one panel per voice).
+ *
+ * `params_str` is "key=value,key2=value2" (comma-separated, no spaces
+ * around '=' or ','). A ${name} with no matching key, or malformed
+ * params syntax, is a load error -- never a silent pass-through -- so a
+ * typo can't result in a half-substituted template quietly sending the
+ * literal text "${voice}" as part of a command. */
+bool apply_params(std::string &text, const char *params_str, std::string &err) {
+    std::map<std::string, std::string> kv;
+    if (params_str && *params_str) {
+        std::string s(params_str);
+        size_t pos = 0;
+        while (pos < s.size()) {
+            size_t comma = s.find(',', pos);
+            std::string pair = s.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+            size_t eq = pair.find('=');
+            if (eq == std::string::npos || eq == 0) {
+                err = "malformed params (expected key=value): '" + pair + "'";
+                return false;
+            }
+            kv[pair.substr(0, eq)] = pair.substr(eq + 1);
+            if (comma == std::string::npos) break;
+            pos = comma + 1;
+        }
+    }
+
+    std::string out;
+    out.reserve(text.size());
+    size_t i = 0;
+    while (i < text.size()) {
+        if (text[i] == '$' && i + 1 < text.size() && text[i + 1] == '{') {
+            size_t close = text.find('}', i + 2);
+            if (close == std::string::npos) {
+                err = "unterminated ${...} in template";
+                return false;
+            }
+            std::string name = text.substr(i + 2, close - (i + 2));
+            std::map<std::string, std::string>::iterator it = kv.find(name);
+            if (it == kv.end()) {
+                err = "missing param '" + name + "' referenced as ${" + name + "}";
+                return false;
+            }
+            out += it->second;
+            i = close + 1;
+        } else {
+            out += text[i];
+            ++i;
+        }
+    }
+    text = out;
+    return true;
 }
 
 void pop_modifiers(std::vector<Token> &toks, int &weight,
@@ -1160,8 +1217,8 @@ void panel_set_command_handler(panel_command_fn fn, void *user_data) {
 
 static panel_win_t *build_from_parsed(const ParsedWindow &pwin) {
     panel_win_t *pw = new panel_win();
-    PanelWindow *pwn = new PanelWindow(pwin.width, pwin.height, nullptr);
-    pwn->copy_label(pwin.title.c_str());
+    PanelWindow *pwn = new PanelWindow(pwin.width, pwin.height, NULL);
+    pwn->copy_label(pwin.title.c_str()); /* was passed to the ctor directly; see dangling-pointer note */
     pw->win = pwn;
     pw->content = new Fl_Group(0, 0, pwin.width, pwin.height);
     pw->win->add(pw->content);
@@ -1192,6 +1249,19 @@ panel_win_t *panel_load_string(const char *dsl_text, const char *fallback_title)
     return build_from_parsed(pwin);
 }
 
+panel_win_t *panel_load_string_params(const char *dsl_text, const char *params, const char *fallback_title) {
+    if (!dsl_text) return NULL;
+    std::string text = dsl_text;
+    if (params) {
+        std::string err;
+        if (!apply_params(text, params, err)) {
+            fprintf(stderr, "panel_dsl: %s\n", err.c_str());
+            return NULL;
+        }
+    }
+    return panel_load_string(text.c_str(), fallback_title);
+}
+
 panel_win_t *panel_load_file(const char *path) {
     if (!path) return NULL;
     std::ifstream in(path);
@@ -1204,7 +1274,23 @@ panel_win_t *panel_load_file(const char *path) {
     return panel_load_string(ss.str().c_str(), path);
 }
 
+panel_win_t *panel_load_file_params(const char *path, const char *params) {
+    if (!path) return NULL;
+    std::ifstream in(path);
+    if (!in) {
+        fprintf(stderr, "panel_dsl: cannot open '%s'\n", path);
+        return NULL;
+    }
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    return panel_load_string_params(ss.str().c_str(), params, path);
+}
+
 int panel_reload_file(panel_win_t *pw, const char *path) {
+    return panel_reload_file_params(pw, path, NULL);
+}
+
+int panel_reload_file_params(panel_win_t *pw, const char *path, const char *params) {
     if (!pw || !path) return -1;
     std::ifstream in(path);
     if (!in) {
@@ -1213,11 +1299,19 @@ int panel_reload_file(panel_win_t *pw, const char *path) {
     }
     std::ostringstream ss;
     ss << in.rdbuf();
+    std::string text = ss.str();
+    if (params) {
+        std::string err;
+        if (!apply_params(text, params, err)) {
+            fprintf(stderr, "panel_dsl: %s\n", err.c_str());
+            return -1; /* existing panel left untouched */
+        }
+    }
 
     ParsedWindow pwin;
     pwin.title = path;
     std::string err;
-    if (!parse_dsl(ss.str(), pwin, err)) {
+    if (!parse_dsl(text, pwin, err)) {
         fprintf(stderr, "panel_dsl: %s\n", err.c_str());
         return -1;
     }
@@ -1225,7 +1319,7 @@ int panel_reload_file(panel_win_t *pw, const char *path) {
     ReloadSnapshot snap;
     snapshot_values(pw->content, snap);
 
-    pw->win->copy_label(pwin.title.c_str());
+    pw->win->copy_label(pwin.title.c_str()); /* was ->label(); see the earlier dangling-pointer fix */
     int used_h = build_widgets(pw, pwin);
 
     restore_values(pw->content, snap);
@@ -1266,6 +1360,8 @@ namespace {
 struct RegistryEntry {
     panel_win_t *pw;
     std::string path;
+    std::string params;   /* empty if loaded without params */
+    bool has_params;
 };
 std::map<std::string, RegistryEntry> g_registry;
 }
@@ -1284,6 +1380,25 @@ panel_win_t *panel_registry_load(const char *name, const char *path) {
     RegistryEntry entry;
     entry.pw = pw;
     entry.path = path;
+    entry.has_params = false;
+    g_registry[name] = entry;
+    return pw;
+}
+
+panel_win_t *panel_registry_load_params(const char *name, const char *path, const char *params) {
+    if (!name || !path) return NULL;
+    std::map<std::string, RegistryEntry>::iterator it = g_registry.find(name);
+    if (it != g_registry.end()) {
+        panel_destroy(it->second.pw);
+        g_registry.erase(it);
+    }
+    panel_win_t *pw = panel_load_file_params(path, params);
+    if (!pw) return NULL;
+    RegistryEntry entry;
+    entry.pw = pw;
+    entry.path = path;
+    entry.params = params ? params : "";
+    entry.has_params = true;
     g_registry[name] = entry;
     return pw;
 }
@@ -1298,6 +1413,8 @@ int panel_registry_reload(const char *name) {
     if (!name) return -1;
     std::map<std::string, RegistryEntry>::iterator it = g_registry.find(name);
     if (it == g_registry.end()) return -1;
+    if (it->second.has_params)
+        return panel_reload_file_params(it->second.pw, it->second.path.c_str(), it->second.params.c_str());
     return panel_reload_file(it->second.pw, it->second.path.c_str());
 }
 

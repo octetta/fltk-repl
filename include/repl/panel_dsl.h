@@ -133,11 +133,31 @@ panel_win_t *panel_load_file(const char *path);
 /* Same, but from an in-memory DSL string (e.g. embedded default panels). */
 panel_win_t *panel_load_string(const char *dsl_text, const char *fallback_title);
 
+/* Same as panel_load_file()/panel_load_string(), but first expands
+ * ${name} placeholders anywhere in the file's text using `params`
+ * ("key=value,key2=value2", comma-separated). This is how one DSL file
+ * becomes a template instantiated several times -- e.g. one voice-panel
+ * layout loaded three times as `panel_load_file_params("voice.pnl",
+ * "voice=1")`, `"voice=2"`, `"voice=3"`, producing three independent
+ * panels with different template substitutions baked in at load time.
+ * ${name} is deliberately distinct from %d/%f/%s: those resolve every
+ * time a widget fires (its current value); ${name} resolves once, when
+ * the file is loaded. A ${name} with no matching key in `params`, or
+ * malformed params syntax, is a load error -- never silently left as
+ * literal "${name}" text or silently dropped. `params` may be NULL,
+ * equivalent to calling the non-_params version. */
+panel_win_t *panel_load_file_params(const char *path, const char *params);
+panel_win_t *panel_load_string_params(const char *dsl_text, const char *params, const char *fallback_title);
+
 /* Tear down and rebuild a panel's contents in place from `path`, keeping
  * the same window (position preserved; size follows the new `window`
  * directive). Returns 0 on success, -1 on parse error (existing panel is
  * left untouched). */
 int panel_reload_file(panel_win_t *pw, const char *path);
+
+/* Same, but re-applying ${name} substitution with `params` on every
+ * reload, same rules as panel_load_file_params(). */
+int panel_reload_file_params(panel_win_t *pw, const char *path, const char *params);
 
 void panel_show(panel_win_t *pw);
 void panel_hide(panel_win_t *pw);
@@ -150,8 +170,9 @@ void panel_destroy(panel_win_t *pw);
  * managing several named panels (e.g. "envelope", "pads", "mixer") from
  * a command dispatcher without hand-rolling a name -> panel_win_t map. */
 panel_win_t *panel_registry_load(const char *name, const char *path); /* loads/replaces the named slot */
+panel_win_t *panel_registry_load_params(const char *name, const char *path, const char *params);
 panel_win_t *panel_registry_get(const char *name);                     /* NULL if not loaded */
-int panel_registry_reload(const char *name);                           /* reload from the path used at load */
+int panel_registry_reload(const char *name);                           /* reload from the path/params used at load */
 void panel_registry_show(const char *name);
 void panel_registry_hide(const char *name);
 void panel_registry_destroy(const char *name);

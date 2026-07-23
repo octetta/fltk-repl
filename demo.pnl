@@ -1,15 +1,13 @@
 window "demo window" 800 400
 
-button perf "/a?"
-
 slider note 0 127 "=10,%d" =69 ~live
 
-slider duration   0 7  1 "DL $1 %d - - - - -" =0 ~live
-slider multply    0 15 1 "DL $1 - %d - - - -" =0 ~live
-slider feedback   0 15 1 "DL $1 - - %d - - -" =0 ~live
-slider modulation 0 31 1 "DL $1 - - - %d - -" =0 ~live
-slider depth      0 31 1 "DL $1 - - - - %d -" =0 ~live
-slider amount     0 15 1 "DL $1 - - - - - %d" =0 ~live
+slider duration   0 7  1 "DL ${track} %d - - - - -" =0 ~live
+slider multply    0 15 1 "DL ${track} - %d - - - -" =0 ~live
+slider feedback   0 15 1 "DL ${track} - - %d - - -" =0 ~live
+slider modulation 0 31 1 "DL ${track} - - - %d - -" =0 ~live
+slider depth      0 31 1 "DL ${track} - - - - %d -" =0 ~live
+slider amount     0 15 1 "DL ${track} - - - - - %d" =0 ~live
 
 grid 2 2
   button kick "v10 l1"
