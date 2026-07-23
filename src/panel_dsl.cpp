@@ -70,6 +70,8 @@ struct ParsedBlock {
     ParsedGrid grid;
 };
 
+std::string grouco = "groucho";
+
 struct ParsedWindow {
     std::string title = "Panel";
     int width = 320;
@@ -1158,7 +1160,8 @@ void panel_set_command_handler(panel_command_fn fn, void *user_data) {
 
 static panel_win_t *build_from_parsed(const ParsedWindow &pwin) {
     panel_win_t *pw = new panel_win();
-    PanelWindow *pwn = new PanelWindow(pwin.width, pwin.height, pwin.title.c_str());
+    PanelWindow *pwn = new PanelWindow(pwin.width, pwin.height, nullptr);
+    pwn->copy_label(pwin.title.c_str());
     pw->win = pwn;
     pw->content = new Fl_Group(0, 0, pwin.width, pwin.height);
     pw->win->add(pw->content);
@@ -1222,7 +1225,7 @@ int panel_reload_file(panel_win_t *pw, const char *path) {
     ReloadSnapshot snap;
     snapshot_values(pw->content, snap);
 
-    pw->win->label(pwin.title.c_str());
+    pw->win->copy_label(pwin.title.c_str());
     int used_h = build_widgets(pw, pwin);
 
     restore_values(pw->content, snap);

@@ -187,7 +187,8 @@ static bitmap_win_t *find_or_create(const char *name) {
     const int default_w = 512, default_h = 384;
     bitmap_win_t *bw = new bitmap_win();
     bw->name = key;
-    bw->win = new Fl_Double_Window(default_w, default_h, key.c_str());
+    bw->win = new Fl_Double_Window(default_w, default_h);
+    bw->win->copy_label(key.c_str());
     bw->view = new BitmapView(0, 0, default_w, default_h);
     bw->win->resizable(bw->view);
     bw->win->end();

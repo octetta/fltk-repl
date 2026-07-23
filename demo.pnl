@@ -1,4 +1,4 @@
-window "demo" 800 400
+window "demo window" 800 400
 
 button perf "/a?"
 
