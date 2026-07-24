@@ -548,6 +548,16 @@ std::string format_display_value(const std::string &tmpl, double v) {
 
 panel_command_fn g_cmd_fn = NULL;
 void *g_cmd_user_data = NULL;
+panel_error_fn g_error_fn = NULL;
+void *g_error_user_data = NULL;
+
+void report_error(const std::string &message) {
+    if (g_error_fn) {
+        g_error_fn(message.c_str(), g_error_user_data);
+    } else {
+        fprintf(stderr, "%s\n", message.c_str());
+    }
+}
 
 void dispatch(const std::string &line) {
     if (g_cmd_fn) g_cmd_fn(line.c_str(), g_cmd_user_data);
@@ -1215,6 +1225,11 @@ void panel_set_command_handler(panel_command_fn fn, void *user_data) {
     g_cmd_user_data = user_data;
 }
 
+void panel_set_error_handler(panel_error_fn fn, void *user_data) {
+    g_error_fn = fn;
+    g_error_user_data = user_data;
+}
+
 static panel_win_t *build_from_parsed(const ParsedWindow &pwin) {
     panel_win_t *pw = new panel_win();
     PanelWindow *pwn = new PanelWindow(pwin.width, pwin.height, NULL);
@@ -1243,7 +1258,7 @@ panel_win_t *panel_load_string(const char *dsl_text, const char *fallback_title)
     if (fallback_title) pwin.title = fallback_title;
     std::string err;
     if (!parse_dsl(dsl_text, pwin, err)) {
-        fprintf(stderr, "panel_dsl: %s\n", err.c_str());
+        report_error(std::string("panel_dsl: ") + err);
         return NULL;
     }
     return build_from_parsed(pwin);
@@ -1255,7 +1270,7 @@ panel_win_t *panel_load_string_params(const char *dsl_text, const char *params, 
     if (params) {
         std::string err;
         if (!apply_params(text, params, err)) {
-            fprintf(stderr, "panel_dsl: %s\n", err.c_str());
+            report_error(std::string("panel_dsl: ") + err);
             return NULL;
         }
     }
@@ -1266,7 +1281,7 @@ panel_win_t *panel_load_file(const char *path) {
     if (!path) return NULL;
     std::ifstream in(path);
     if (!in) {
-        fprintf(stderr, "panel_dsl: cannot open '%s'\n", path);
+        report_error(std::string("panel_dsl: cannot open '") + path + "'");
         return NULL;
     }
     std::ostringstream ss;
@@ -1278,7 +1293,7 @@ panel_win_t *panel_load_file_params(const char *path, const char *params) {
     if (!path) return NULL;
     std::ifstream in(path);
     if (!in) {
-        fprintf(stderr, "panel_dsl: cannot open '%s'\n", path);
+        report_error(std::string("panel_dsl: cannot open '") + path + "'");
         return NULL;
     }
     std::ostringstream ss;
@@ -1294,7 +1309,7 @@ int panel_reload_file_params(panel_win_t *pw, const char *path, const char *para
     if (!pw || !path) return -1;
     std::ifstream in(path);
     if (!in) {
-        fprintf(stderr, "panel_dsl: cannot open '%s'\n", path);
+        report_error(std::string("panel_dsl: cannot open '") + path + "'");
         return -1;
     }
     std::ostringstream ss;
@@ -1303,7 +1318,7 @@ int panel_reload_file_params(panel_win_t *pw, const char *path, const char *para
     if (params) {
         std::string err;
         if (!apply_params(text, params, err)) {
-            fprintf(stderr, "panel_dsl: %s\n", err.c_str());
+            report_error(std::string("panel_dsl: ") + err);
             return -1; /* existing panel left untouched */
         }
     }
@@ -1312,7 +1327,7 @@ int panel_reload_file_params(panel_win_t *pw, const char *path, const char *para
     pwin.title = path;
     std::string err;
     if (!parse_dsl(text, pwin, err)) {
-        fprintf(stderr, "panel_dsl: %s\n", err.c_str());
+        report_error(std::string("panel_dsl: ") + err);
         return -1;
     }
 
@@ -1370,13 +1385,13 @@ extern "C" {
 
 panel_win_t *panel_registry_load(const char *name, const char *path) {
     if (!name || !path) return NULL;
+    panel_win_t *pw = panel_load_file(path);
+    if (!pw) return NULL;
     std::map<std::string, RegistryEntry>::iterator it = g_registry.find(name);
     if (it != g_registry.end()) {
         panel_destroy(it->second.pw);
         g_registry.erase(it);
     }
-    panel_win_t *pw = panel_load_file(path);
-    if (!pw) return NULL;
     RegistryEntry entry;
     entry.pw = pw;
     entry.path = path;
@@ -1387,13 +1402,13 @@ panel_win_t *panel_registry_load(const char *name, const char *path) {
 
 panel_win_t *panel_registry_load_params(const char *name, const char *path, const char *params) {
     if (!name || !path) return NULL;
+    panel_win_t *pw = panel_load_file_params(path, params);
+    if (!pw) return NULL;
     std::map<std::string, RegistryEntry>::iterator it = g_registry.find(name);
     if (it != g_registry.end()) {
         panel_destroy(it->second.pw);
         g_registry.erase(it);
     }
-    panel_win_t *pw = panel_load_file_params(path, params);
-    if (!pw) return NULL;
     RegistryEntry entry;
     entry.pw = pw;
     entry.path = path;

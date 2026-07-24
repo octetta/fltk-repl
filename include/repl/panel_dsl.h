@@ -126,8 +126,13 @@ typedef struct panel_win panel_win_t;
 typedef void (*panel_command_fn)(const char *line, void *user_data);
 void panel_set_command_handler(panel_command_fn fn, void *user_data);
 
-/* Parse `path` and build a new panel window. Returns NULL and prints a
- * diagnostic to stderr (with line number) on a parse error. */
+/* Error callback for parse/open/reload diagnostics. If unset, diagnostics
+ * are written to stderr. The message is valid only during the callback. */
+typedef void (*panel_error_fn)(const char *message, void *user_data);
+void panel_set_error_handler(panel_error_fn fn, void *user_data);
+
+/* Parse `path` and build a new panel window. Returns NULL and reports a
+ * diagnostic through panel_error_fn (or stderr when unset). */
 panel_win_t *panel_load_file(const char *path);
 
 /* Same, but from an in-memory DSL string (e.g. embedded default panels). */

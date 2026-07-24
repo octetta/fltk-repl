@@ -309,7 +309,7 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
                 if (p2) {
                     panel_registry_show(panel_name);
                 } else {
-                    repl_println(app->repl, "Panel load failed — check stderr for details");
+                    repl_println(app->repl, "Panel load failed.");
                 }
             } else {
                 repl_println(app->repl, "usage: panel load <name> <file.pnl> [key=value ...]");
@@ -320,7 +320,7 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
             if (panel_registry_reload(rest) == 0) {
                 repl_println(app->repl, "Panel reloaded successfully.");
             } else {
-                repl_println(app->repl, "Panel reload failed (unknown name, or check stderr).");
+                repl_println(app->repl, "Panel reload failed (unknown panel or invalid file).");
             }
             return;
         }
@@ -425,6 +425,11 @@ static void panel_to_skred(const char *line, void *user_data) {
         skred_command(cmd);
         free(cmd);
     }
+}
+
+static void panel_error_to_repl(const char *message, void *user_data) {
+    app_state *app = (app_state *)user_data;
+    if (app && app->repl && message) repl_println(app->repl, message);
 }
 
 /* Skred-side entry point: bound to Skode's /ff8 via
@@ -582,6 +587,7 @@ int main(int argc, char **argv) {
     repl_register_command(app.repl, "credits", cmd_credits, &app);
     repl_set_fallback_handler(app.repl, bitmap_panel_handler, &app);
     panel_set_command_handler(panel_to_skred, NULL);
+    panel_set_error_handler(panel_error_to_repl, &app);
 
     /* Initialize FLTK's cross-thread awake support before Skred can invoke
      * a foreign callback from its control-dispatch thread. */
@@ -624,6 +630,7 @@ int main(int argc, char **argv) {
     skred_spectrogram_unbind();
     topology_hide();
     skred_stop();
+    panel_set_error_handler(NULL, NULL);
     save_appearance_preferences(prefs, app.repl);
     repl_destroy(app.repl);
     repl_prefs_destroy(prefs);
