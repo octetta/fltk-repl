@@ -17,6 +17,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+#if __has_include(<skred/skred_vfs.h>)
+#include <skred/skred_vfs.h>
+#define HAS_SKRED_VFS 1
+#endif
 
 #ifndef FLTK_REPL_VERSION
 #define FLTK_REPL_VERSION "unknown"
@@ -324,9 +330,125 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
             }
             return;
         }
+        if (n2 >= 1 && strcmp(pname, "open") == 0) {
+            char panel_name[64] = {0};
+            if (n2 >= 2) sscanf(rest, "%63s", panel_name);
+            if (!panel_name[0]) strcpy(panel_name, "panel1");
+
+            char *file = repl_open_file_dialog(app->repl, "Select Panel File", "Panel Files (*.pnl)\t*.pnl\nZip Archives (*.zip)\t*.zip\nAll Files (*)\t*");
+            if (file) {
+                panel_win_t *p = panel_registry_load(panel_name, file);
+                if (p) {
+                    panel_registry_show(panel_name);
+                    repl_printf(app->repl, "Loaded panel '%s' from: %s\n", panel_name, file);
+                } else {
+                    repl_printf(app->repl, "Failed to load panel from: %s\n", file);
+                }
+                repl_free_string(file);
+            } else {
+                repl_println(app->repl, "Panel browse cancelled.");
+            }
+            return;
+        }
         if (n2 >= 2 && strcmp(pname, "show") == 0) { panel_registry_show(rest); return; }
         if (n2 >= 2 && strcmp(pname, "hide") == 0) { panel_registry_hide(rest); return; }
-        repl_println(app->repl, "usage: panel load <name> <file.pnl> [key=value ...] | reload <name> | show <name> | hide <name>");
+        repl_println(app->repl, "usage: panel load <name> <file.pnl> [key=value ...] | open [name] | reload <name> | show <name> | hide <name>");
+        return;
+    }
+
+    if (strcmp(cmd, "pwd") == 0) {
+        char cwd[1024] = {0};
+        if (getcwd(cwd, sizeof(cwd))) {
+            repl_printf(app->repl, "%s\n", cwd);
+        }
+        return;
+    }
+
+    if (strcmp(cmd, "cd") == 0) {
+        if (n < 2) {
+            char *dir = repl_choose_directory_dialog(app->repl, "Select Working Directory");
+            if (dir) {
+                if (chdir(dir) == 0) {
+#if HAS_SKRED_VFS
+                    if (skred_chdir) skred_chdir(dir);
+#endif
+                    repl_printf(app->repl, "Working directory set to: %s\n", dir);
+                } else {
+                    repl_printf(app->repl, "Failed to change working directory to: %s\n", dir);
+                }
+                repl_free_string(dir);
+            }
+            return;
+        }
+        if (chdir(arg) == 0) {
+#if HAS_SKRED_VFS
+            if (skred_chdir) skred_chdir(arg);
+#endif
+            char cwd[1024] = {0};
+            if (getcwd(cwd, sizeof(cwd))) {
+                repl_printf(app->repl, "Working directory set to: %s\n", cwd);
+            }
+        } else {
+            repl_printf(app->repl, "cd: failed to change directory to '%s'\n", arg);
+        }
+        return;
+    }
+
+    if (strcmp(cmd, "browse") == 0) {
+        char sub[64] = {0}, arg2[192] = {0};
+        int n2 = (n >= 2) ? sscanf(arg, "%63s %191[^\n]", sub, arg2) : 0;
+
+        if (n2 == 0 || strcmp(sub, "dir") == 0 || strcmp(sub, "folder") == 0) {
+            char *dir = repl_choose_directory_dialog(app->repl, "Select Working Directory");
+            if (dir) {
+                if (chdir(dir) == 0) {
+#if HAS_SKRED_VFS
+                    if (skred_chdir) skred_chdir(dir);
+#endif
+                    repl_printf(app->repl, "Working directory set to: %s\n", dir);
+                } else {
+                    repl_printf(app->repl, "Failed to change working directory to: %s\n", dir);
+                }
+                repl_free_string(dir);
+            } else {
+                repl_println(app->repl, "Directory browse cancelled.");
+            }
+            return;
+        }
+
+        if (strcmp(sub, "file") == 0) {
+            char *file = repl_open_file_dialog(app->repl, "Select File", "All Files\t*");
+            if (file) {
+                repl_printf(app->repl, "Selected file: %s\n", file);
+                repl_free_string(file);
+            } else {
+                repl_println(app->repl, "File browse cancelled.");
+            }
+            return;
+        }
+
+        if (strcmp(sub, "panel") == 0 || strcmp(sub, "open") == 0) {
+            char panel_name[64] = {0};
+            if (n2 >= 2) sscanf(arg2, "%63s", panel_name);
+            if (!panel_name[0]) strcpy(panel_name, "panel1");
+
+            char *file = repl_open_file_dialog(app->repl, "Select Panel File", "Panel Files (*.pnl)\t*.pnl\nZip Archives (*.zip)\t*.zip\nAll Files (*)\t*");
+            if (file) {
+                panel_win_t *p = panel_registry_load(panel_name, file);
+                if (p) {
+                    panel_registry_show(panel_name);
+                    repl_printf(app->repl, "Loaded panel '%s' from: %s\n", panel_name, file);
+                } else {
+                    repl_printf(app->repl, "Failed to load panel from: %s\n", file);
+                }
+                repl_free_string(file);
+            } else {
+                repl_println(app->repl, "Panel browse cancelled.");
+            }
+            return;
+        }
+
+        repl_println(app->repl, "usage: browse [dir|folder] | browse file | browse panel [name]");
         return;
     }
 
@@ -390,11 +512,14 @@ static void gui_help(int argc, char **argv, void *userdata) {
         "  clear                    clear scrollback\n"
         "  theme light|dark         change colors\n"
         "  font \"name\" [size]       change terminal font\n"
+        "  pwd                      print working directory\n"
+        "  cd [path]                change working directory (interactive chooser if no path)\n"
+        "  browse [dir|file|panel]  open native file/folder chooser dialog\n"
         "  bitmap [show|hide|clear] graphics output window\n"
         "  spectrogram wave <slot> | record [-1|0|1]\n"
         "  waveform wave <slot> | record [-1|0|1]\n"
         "  topology <voice> [depth] show /vg voice topology\n"
-        "  panel load <name> <file.pnl> [key=value ...] | reload <name> | show <name> | hide <name>\n"
+        "  panel load <name> <file.pnl> [key=value ...] | open [name] | reload <name> | show <name> | hide <name>\n"
         "    e.g. panel load voice1 voice.pnl voice=1  (fills in ${voice} in voice.pnl)\n"
         "  boot [voices N] [frames N] [port N]   restart Skred\n"
         "  credits\n"

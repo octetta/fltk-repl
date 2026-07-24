@@ -34,6 +34,7 @@ namespace {
 extern "C" {
 __attribute__((weak)) bool skred_vfs_read_file(const char *filepath, void **data, size_t *size);
 __attribute__((weak)) void skred_vfs_free_file(void *data);
+__attribute__((weak)) const char *skred_vfs_root(void);
 }
 #endif
 
@@ -51,9 +52,9 @@ static bool read_file_content(const char *path, std::string &out_content) {
         }
     }
 
-    // 2. Fall back to Skred VFS for mounted zip/virtual paths
+    // 2. Fall back to Skred VFS for mounted zip/virtual paths (only if VFS is active)
 #if HAS_SKRED_VFS
-    if (skred_vfs_read_file) {
+    if (skred_vfs_root && skred_vfs_root() != nullptr && skred_vfs_read_file) {
         void *data = nullptr;
         size_t size = 0;
         if (skred_vfs_read_file(path, &data, &size)) {
