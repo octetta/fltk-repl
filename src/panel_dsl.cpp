@@ -23,7 +23,55 @@
 #include <chrono>
 #include <algorithm>
 
+#if __has_include(<skred/skred_vfs.h>)
+#include <skred/skred_vfs.h>
+#define HAS_SKRED_VFS 1
+#endif
+
 namespace {
+
+#if HAS_SKRED_VFS
+extern "C" {
+__attribute__((weak)) bool skred_vfs_read_file(const char *filepath, void **data, size_t *size);
+__attribute__((weak)) void skred_vfs_free_file(void *data);
+}
+#endif
+
+static bool read_file_content(const char *path, std::string &out_content) {
+    if (!path || !*path) return false;
+
+    // 1. Try standard disk read first
+    {
+        std::ifstream in(path, std::ios::binary);
+        if (in.is_open()) {
+            std::ostringstream ss;
+            ss << in.rdbuf();
+            out_content = ss.str();
+            return true;
+        }
+    }
+
+    // 2. Fall back to Skred VFS for mounted zip/virtual paths
+#if HAS_SKRED_VFS
+    if (skred_vfs_read_file) {
+        void *data = nullptr;
+        size_t size = 0;
+        if (skred_vfs_read_file(path, &data, &size)) {
+            if (data && size > 0) {
+                out_content.assign(static_cast<const char *>(data), size);
+            } else {
+                out_content.clear();
+            }
+            if (skred_vfs_free_file && data) {
+                skred_vfs_free_file(data);
+            }
+            return true;
+        }
+    }
+#endif
+
+    return false;
+}
 
 /* ---------------------------------------------------------------------
  * Parse tree
@@ -1279,26 +1327,22 @@ panel_win_t *panel_load_string_params(const char *dsl_text, const char *params, 
 
 panel_win_t *panel_load_file(const char *path) {
     if (!path) return NULL;
-    std::ifstream in(path);
-    if (!in) {
+    std::string text;
+    if (!read_file_content(path, text)) {
         report_error(std::string("panel_dsl: cannot open '") + path + "'");
         return NULL;
     }
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    return panel_load_string(ss.str().c_str(), path);
+    return panel_load_string(text.c_str(), path);
 }
 
 panel_win_t *panel_load_file_params(const char *path, const char *params) {
     if (!path) return NULL;
-    std::ifstream in(path);
-    if (!in) {
+    std::string text;
+    if (!read_file_content(path, text)) {
         report_error(std::string("panel_dsl: cannot open '") + path + "'");
         return NULL;
     }
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    return panel_load_string_params(ss.str().c_str(), params, path);
+    return panel_load_string_params(text.c_str(), params, path);
 }
 
 int panel_reload_file(panel_win_t *pw, const char *path) {
@@ -1307,14 +1351,11 @@ int panel_reload_file(panel_win_t *pw, const char *path) {
 
 int panel_reload_file_params(panel_win_t *pw, const char *path, const char *params) {
     if (!pw || !path) return -1;
-    std::ifstream in(path);
-    if (!in) {
+    std::string text;
+    if (!read_file_content(path, text)) {
         report_error(std::string("panel_dsl: cannot open '") + path + "'");
         return -1;
     }
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    std::string text = ss.str();
     if (params) {
         std::string err;
         if (!apply_params(text, params, err)) {

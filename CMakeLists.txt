@@ -61,7 +61,7 @@ add_library(replfltk STATIC
     src/repl_prefs.cpp
 )
 
-target_include_directories(replfltk PUBLIC include PRIVATE src)
+target_include_directories(replfltk PUBLIC include PRIVATE src ${SKRED_INCLUDE_DIR})
 target_link_libraries(replfltk PUBLIC ${REPL_FLTK_TARGET})
 
 if(APPLE)
