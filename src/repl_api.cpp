@@ -301,6 +301,11 @@ int repl_run(repl_ctx *ctx) {
     return Fl::run();
 }
 
+void repl_dispatch_line(repl_ctx *ctx, const char *line) {
+    if (!ctx || !line) return;
+    dispatch_line(ctx, line);
+}
+
 void repl_quit(repl_ctx *ctx) {
     if (!ctx || !ctx->window) return;
     ctx->window->hide();

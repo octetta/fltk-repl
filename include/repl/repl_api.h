@@ -69,6 +69,10 @@ void repl_destroy(repl_ctx *ctx);
  * same value Fl::run() would. */
 int repl_run(repl_ctx *ctx);
 
+/* Execute one complete input line using the normal command/fallback
+ * dispatch. Must be called on the FLTK thread. */
+void repl_dispatch_line(repl_ctx *ctx, const char *line);
+
 /* Programmatically close the window / exit repl_run(). */
 void repl_quit(repl_ctx *ctx);
 

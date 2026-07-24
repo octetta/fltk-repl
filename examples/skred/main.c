@@ -401,8 +401,8 @@ static void gui_help(int argc, char **argv, void *userdata) {
         "  quit / exit              stop everything\n"
         "\n"
         "Every other line is sent to Skred.\n"
-        "Skode can also trigger GUI commands directly via /ff9, e.g.:\n"
-        "  [waveform wave 0] /ff9");
+        "Skode can also trigger GUI commands directly via /ff8, e.g.:\n"
+        "  [waveform wave 0] /ff8");
 }
 
 static void cmd_quit(int argc, char **argv, void *userdata) {
@@ -427,19 +427,29 @@ static void panel_to_skred(const char *line, void *user_data) {
     }
 }
 
-/* Skred-side entry point: bound to Skode's /ff9 via
+/* Skred-side entry point: bound to Skode's /ff8 via
  * skred_foreign_function_bind() below. call->string is whatever Skode's
- * current [string] context holds when /ff9 runs -- e.g. in
- * "[waveform wave 0] /ff9", call->string is "waveform wave 0". That text
+ * current [string] context holds when /ff8 runs -- e.g. in
+ * "[waveform wave 0] /ff8", call->string is "waveform wave 0". That text
  * is handed to foreign_bridge_dispatch(), which is safe to call from any
  * thread: it queues the line to run on the FLTK main thread via
- * Fl::awake(), where it reaches bitmap_panel_handler() exactly as if it
- * had been typed at the REPL prompt. This indirection matters because
- * /ff9 can fire from Skred's control-dispatcher thread (patterns,
+ * Fl::awake(), where it enters the normal REPL dispatcher exactly as if it
+ * had been typed at the prompt. This indirection matters because
+ * /ff8 can fire from Skred's control-dispatcher thread (patterns,
  * repeats, /ceb response chains), not only from a line typed live at the
  * prompt -- see api.h's Threading Notes. call->string is only valid
  * during this call, so it must be handed off (not stored) before
  * returning; foreign_bridge_dispatch() copies it internally. */
+static _Thread_local int g_foreign_repl_dispatching;
+
+static void foreign_repl_handler(const char *line, void *user) {
+    app_state *app = (app_state *)user;
+    if (!app || !app->repl || g_foreign_repl_dispatching) return;
+    g_foreign_repl_dispatching = 1;
+    repl_dispatch_line(app->repl, line);
+    g_foreign_repl_dispatching = 0;
+}
+
 static int fltk_repl_foreign_call(const skred_foreign_call_t *call, void *user) {
     (void)user;
     if (call->string && call->string[0]) {
@@ -573,14 +583,10 @@ int main(int argc, char **argv) {
     repl_set_fallback_handler(app.repl, bitmap_panel_handler, &app);
     panel_set_command_handler(panel_to_skred, NULL);
 
-    /* foreign_bridge_init() wraps Fl::lock(), required once before any
-     * other thread can safely use Fl::awake() (which foreign_bridge_
-     * dispatch() does internally). Route dispatched lines through the
-     * same handler already used for typed REPL input, so "[waveform wave
-     * 0] /ff9" from Skode behaves identically to typing "waveform wave 0"
-     * at the prompt. */
+    /* Initialize FLTK's cross-thread awake support before Skred can invoke
+     * a foreign callback from its control-dispatch thread. */
     foreign_bridge_init();
-    foreign_bridge_set_handler(bitmap_panel_handler, &app);
+    foreign_bridge_set_handler(foreign_repl_handler, &app);
 
     print_release_info_repl(&app);
     repl_printf(app.repl, "frames/callback %u; voices %u; UDP port %d\n",
@@ -601,10 +607,10 @@ int main(int argc, char **argv) {
         repl_println(app.repl, "Could not bind the spectrogram data bridge.");
     }
 
-    /* Bind Skode's /ff9 to fltk_repl_foreign_call(). Slot 9 is arbitrary
-     * (0..9 are all available) -- pick a different slot here if 9 is
-     * ever needed for something else. */
-    //skred_foreign_function_bind(9, fltk_repl_foreign_call, &app);
+    /* Slot 9 belongs to SpectrogramBridge; reserve slot 8 for GUI strings. */
+    if (skred_foreign_function_bind(8, fltk_repl_foreign_call, &app) != 0) {
+        repl_println(app.repl, "Could not bind the Skode GUI-string callback.");
+    }
 
     skred_logger(1);
     repl_println(app.repl,
@@ -612,10 +618,11 @@ int main(int argc, char **argv) {
         "Type '/h' for SKODE commands");
 
     i = repl_run(app.repl);
-    skred_foreign_function_clear(9);
+    skred_control_dispatch_stop();
+    skred_foreign_function_clear(8);
+    foreign_bridge_shutdown();
     skred_spectrogram_unbind();
     topology_hide();
-    skred_control_dispatch_stop();
     skred_stop();
     save_appearance_preferences(prefs, app.repl);
     repl_destroy(app.repl);

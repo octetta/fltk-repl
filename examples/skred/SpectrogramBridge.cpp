@@ -164,9 +164,6 @@ void waveMetadata(int wave, float &sampleRate, int &loopStart, int &loopEnd) {
 extern "C" {
 
 int skred_spectrogram_bind(void) {
-    /* Enable FLTK's cross-thread awake queue before Skred can invoke the
-     * reserved callback from a control-dispatch thread. */
-    Fl::lock();
     return skred_foreign_function_bind(kForeignSlot, receiveSamples, nullptr);
 }
 
