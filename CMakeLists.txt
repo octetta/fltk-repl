@@ -55,7 +55,9 @@ add_library(replfltk STATIC
     src/Spectrogram.cpp src/Spectrogram.h src/Waveform.cpp src/Waveform.h
     src/VoiceTopology.cpp src/VoiceTopology.h
     src/bitmap_win.cpp src/panel_dsl.cpp
+    src/foreign_bridge.cpp
     include/repl/bitmap_win.h include/repl/panel_dsl.h
+    include/repl/foreign_bridge.h
     src/repl_prefs.cpp
 )
 

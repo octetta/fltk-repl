@@ -9,6 +9,7 @@
 #include "repl/repl_prefs.h"
 #include "repl/bitmap_win.h"
 #include "repl/panel_dsl.h"
+#include "repl/foreign_bridge.h"
 #include "SpectrogramBridge.h"
 #include "TopologyWindow.h"
 #include <skred/api.h>
@@ -399,13 +400,16 @@ static void gui_help(int argc, char **argv, void *userdata) {
         "  credits\n"
         "  quit / exit              stop everything\n"
         "\n"
-        "Every other line is sent to Skred.");
+        "Every other line is sent to Skred.\n"
+        "Skode can also trigger GUI commands directly via /ff9, e.g.:\n"
+        "  [waveform wave 0] /ff9");
 }
 
 static void cmd_quit(int argc, char **argv, void *userdata) {
     app_state *app = (app_state *)userdata;
     (void)argc;
     (void)argv;
+    //skred_foreign_function_clear(9);
     skred_spectrogram_unbind();
     topology_hide();
     bitmap_win_hide_all();
@@ -421,6 +425,27 @@ static void panel_to_skred(const char *line, void *user_data) {
         skred_command(cmd);
         free(cmd);
     }
+}
+
+/* Skred-side entry point: bound to Skode's /ff9 via
+ * skred_foreign_function_bind() below. call->string is whatever Skode's
+ * current [string] context holds when /ff9 runs -- e.g. in
+ * "[waveform wave 0] /ff9", call->string is "waveform wave 0". That text
+ * is handed to foreign_bridge_dispatch(), which is safe to call from any
+ * thread: it queues the line to run on the FLTK main thread via
+ * Fl::awake(), where it reaches bitmap_panel_handler() exactly as if it
+ * had been typed at the REPL prompt. This indirection matters because
+ * /ff9 can fire from Skred's control-dispatcher thread (patterns,
+ * repeats, /ceb response chains), not only from a line typed live at the
+ * prompt -- see api.h's Threading Notes. call->string is only valid
+ * during this call, so it must be handed off (not stored) before
+ * returning; foreign_bridge_dispatch() copies it internally. */
+static int fltk_repl_foreign_call(const skred_foreign_call_t *call, void *user) {
+    (void)user;
+    if (call->string && call->string[0]) {
+        foreign_bridge_dispatch(call->string);
+    }
+    return 0;
 }
 
 static void load_appearance_preferences(repl_prefs *prefs, repl_ctx *repl) {
@@ -548,6 +573,15 @@ int main(int argc, char **argv) {
     repl_set_fallback_handler(app.repl, bitmap_panel_handler, &app);
     panel_set_command_handler(panel_to_skred, NULL);
 
+    /* foreign_bridge_init() wraps Fl::lock(), required once before any
+     * other thread can safely use Fl::awake() (which foreign_bridge_
+     * dispatch() does internally). Route dispatched lines through the
+     * same handler already used for typed REPL input, so "[waveform wave
+     * 0] /ff9" from Skode behaves identically to typing "waveform wave 0"
+     * at the prompt. */
+    foreign_bridge_init();
+    foreign_bridge_set_handler(bitmap_panel_handler, &app);
+
     print_release_info_repl(&app);
     repl_printf(app.repl, "frames/callback %u; voices %u; UDP port %d\n",
                 frames, voices, port);
@@ -567,12 +601,18 @@ int main(int argc, char **argv) {
         repl_println(app.repl, "Could not bind the spectrogram data bridge.");
     }
 
+    /* Bind Skode's /ff9 to fltk_repl_foreign_call(). Slot 9 is arbitrary
+     * (0..9 are all available) -- pick a different slot here if 9 is
+     * ever needed for something else. */
+    //skred_foreign_function_bind(9, fltk_repl_foreign_call, &app);
+
     skred_logger(1);
     repl_println(app.repl,
         "Type 'help' for REPL commands.\n"
         "Type '/h' for SKODE commands");
 
     i = repl_run(app.repl);
+    skred_foreign_function_clear(9);
     skred_spectrogram_unbind();
     topology_hide();
     skred_control_dispatch_stop();
