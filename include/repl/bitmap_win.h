@@ -81,6 +81,29 @@ int bitmap_win_set_waveform_ex(bitmap_win_t *bw, const float *samples,
 
 void bitmap_win_clear(bitmap_win_t *bw);
 
+/* Spectrogram & Waveform Rendering Options */
+typedef enum {
+    SPECTROGRAM_SCALE_LINEAR = 0,
+    SPECTROGRAM_SCALE_LOG = 1
+} SpectrogramScale;
+
+typedef enum {
+    SPECTROGRAM_COLORMAP_MAGMA = 0,
+    SPECTROGRAM_COLORMAP_VIRIDIS = 1,
+    SPECTROGRAM_COLORMAP_CRT_GREEN = 2,
+    SPECTROGRAM_COLORMAP_AMBER = 3,
+    SPECTROGRAM_COLORMAP_GRAYSCALE = 4
+} SpectrogramColorMap;
+
+void bitmap_win_set_spectrogram_scale(SpectrogramScale scale);
+SpectrogramScale bitmap_win_get_spectrogram_scale(void);
+
+void bitmap_win_set_spectrogram_colormap(SpectrogramColorMap cmap);
+SpectrogramColorMap bitmap_win_get_spectrogram_colormap(void);
+
+void bitmap_win_set_waveform_trigger(int trigger_enabled);
+int bitmap_win_get_waveform_trigger(void);
+
 /* Sets what's shown in the window's title bar. Does not affect the name
  * used to look the window up via bitmap_win_get() -- that stays whatever
  * was passed in originally. */

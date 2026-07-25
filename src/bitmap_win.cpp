@@ -198,6 +198,10 @@ static bitmap_win_t *find_or_create(const char *name) {
     return bw;
 }
 
+static SpectrogramScale g_spectrogram_scale = SPECTROGRAM_SCALE_LINEAR;
+static SpectrogramColorMap g_spectrogram_cmap = SPECTROGRAM_COLORMAP_MAGMA;
+static int g_waveform_trigger = 0;
+
 extern "C" {
 
 bitmap_win_t *bitmap_win_get(const char *name) {
@@ -234,7 +238,8 @@ int bitmap_win_set_spectrogram(bitmap_win_t *bw, const float *samples,
     if (!bw) return -1;
     std::vector<uint8_t> rgb;
     if (!repl_render_spectrogram_rgb(samples, frames, channels, channel,
-                                     width, height, rgb)) return -1;
+                                     width, height, rgb, nullptr,
+                                     (int)g_spectrogram_scale, (int)g_spectrogram_cmap)) return -1;
     bw->view->set_rgb(rgb.data(), width, height);
     return 0;
 }
@@ -265,7 +270,8 @@ int bitmap_win_set_spectrogram_labeled_ex(bitmap_win_t *bw,
     std::vector<ReplVectorLabel> labels;
     if (!repl_render_spectrogram_rgb(samples, frames, channels, channel,
                                      width, plotHeight, plot,
-                                     &spectralMetrics)) {
+                                     &spectralMetrics,
+                                     (int)g_spectrogram_scale, (int)g_spectrogram_cmap)) {
         return -1;
     }
     for (int y = 0; y < plotHeight; ++y) {
@@ -275,7 +281,7 @@ int bitmap_win_set_spectrogram_labeled_ex(bitmap_win_t *bw,
     }
     repl_annotate_spectrogram_rgb(rgb, width, height, title, samples, frames,
                                   channels, channel, &spectralMetrics,
-                                  sample_rate, &labels);
+                                  sample_rate, &labels, (int)g_spectrogram_scale);
     bw->view->set_rgb_labeled(rgb.data(), width, height, std::move(labels));
     return 0;
 }
@@ -299,10 +305,19 @@ int bitmap_win_set_waveform_ex(bitmap_win_t *bw, const float *samples,
     std::vector<ReplVectorLabel> labels;
     if (!repl_render_waveform_rgb(samples, frames, channels, channel,
                                   width, height, title, loop_start, loop_end,
-                                  rgb, sample_rate, &labels)) return -1;
+                                  rgb, sample_rate, &labels, g_waveform_trigger)) return -1;
     bw->view->set_rgb_labeled(rgb.data(), width, height, std::move(labels));
     return 0;
 }
+
+void bitmap_win_set_spectrogram_scale(SpectrogramScale scale) { g_spectrogram_scale = scale; }
+SpectrogramScale bitmap_win_get_spectrogram_scale(void) { return g_spectrogram_scale; }
+
+void bitmap_win_set_spectrogram_colormap(SpectrogramColorMap cmap) { g_spectrogram_cmap = cmap; }
+SpectrogramColorMap bitmap_win_get_spectrogram_colormap(void) { return g_spectrogram_cmap; }
+
+void bitmap_win_set_waveform_trigger(int trigger_enabled) { g_waveform_trigger = trigger_enabled; }
+int bitmap_win_get_waveform_trigger(void) { return g_waveform_trigger; }
 
 void bitmap_win_clear(bitmap_win_t *bw) {
     if (!bw) return;

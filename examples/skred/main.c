@@ -188,6 +188,27 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
     if (strcmp(cmd, "spectrogram") == 0) {
         int value;
         char extra;
+        if (n >= 2 && strncmp(arg, "scale ", 6) == 0) {
+            const char *s = arg + 6;
+            if (strcmp(s, "log") == 0) {
+                bitmap_win_set_spectrogram_scale(SPECTROGRAM_SCALE_LOG);
+                repl_println(app->repl, "Spectrogram frequency scale set to Logarithmic.");
+            } else {
+                bitmap_win_set_spectrogram_scale(SPECTROGRAM_SCALE_LINEAR);
+                repl_println(app->repl, "Spectrogram frequency scale set to Linear.");
+            }
+            return;
+        }
+        if (n >= 2 && (strncmp(arg, "cmap ", 5) == 0 || strncmp(arg, "colormap ", 9) == 0)) {
+            const char *c = (strncmp(arg, "cmap ", 5) == 0) ? arg + 5 : arg + 9;
+            if (strcmp(c, "viridis") == 0) bitmap_win_set_spectrogram_colormap(SPECTROGRAM_COLORMAP_VIRIDIS);
+            else if (strcmp(c, "crt") == 0 || strcmp(c, "green") == 0) bitmap_win_set_spectrogram_colormap(SPECTROGRAM_COLORMAP_CRT_GREEN);
+            else if (strcmp(c, "amber") == 0) bitmap_win_set_spectrogram_colormap(SPECTROGRAM_COLORMAP_AMBER);
+            else if (strcmp(c, "gray") == 0 || strcmp(c, "mono") == 0) bitmap_win_set_spectrogram_colormap(SPECTROGRAM_COLORMAP_GRAYSCALE);
+            else bitmap_win_set_spectrogram_colormap(SPECTROGRAM_COLORMAP_MAGMA);
+            repl_printf(app->repl, "Spectrogram colormap set to '%s'.\n", c);
+            return;
+        }
         if (n >= 2 && sscanf(arg, "wave %d %c", &value, &extra) == 1 &&
             value >= 0) {
             int result = skred_spectrogram_wave(value);
@@ -212,13 +233,20 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
             return;
         }
         repl_println(app->repl,
-            "usage: spectrogram wave <slot> | record [-1|0|1]");
+            "usage: spectrogram wave <slot> | record [-1|0|1] | scale [linear|log] | cmap [magma|viridis|crt|amber|gray]");
         return;
     }
 
     if (strcmp(cmd, "waveform") == 0) {
         int value;
         char extra;
+        if (n >= 2 && strncmp(arg, "trigger ", 8) == 0) {
+            const char *t = arg + 8;
+            int on = (strcmp(t, "1") == 0 || strcmp(t, "on") == 0 || strcmp(t, "true") == 0) ? 1 : 0;
+            bitmap_win_set_waveform_trigger(on);
+            repl_printf(app->repl, "Oscilloscope zero-crossing trigger set to %s.\n", on ? "ON" : "OFF");
+            return;
+        }
         if (n >= 2 && sscanf(arg, "wave %d %c", &value, &extra) == 1 &&
             value >= 0) {
             int result = skred_waveform_wave(value);
@@ -243,7 +271,7 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
             return;
         }
         repl_println(app->repl,
-            "usage: waveform wave <slot> | record [-1|0|1]");
+            "usage: waveform wave <slot> | record [-1|0|1] | trigger [on|off]");
         return;
     }
 

@@ -10,4 +10,5 @@ bool repl_render_waveform_rgb(const float *samples, int frames,
                               int loopStart, int loopEnd,
                               std::vector<uint8_t> &rgb,
                               float sampleRate = 0.0f,
-                              std::vector<ReplVectorLabel> *labels = nullptr);
+                              std::vector<ReplVectorLabel> *labels = nullptr,
+                              int triggerEnabled = 0);

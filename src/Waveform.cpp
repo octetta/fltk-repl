@@ -85,7 +85,8 @@ bool repl_render_waveform_rgb(const float *samples, int frames,
                               int loopStart, int loopEnd,
                               std::vector<uint8_t> &rgb,
                               float sampleRate,
-                              std::vector<ReplVectorLabel> *labels) {
+                              std::vector<ReplVectorLabel> *labels,
+                              int triggerEnabled) {
     rgb.clear();
     if (labels) labels->clear();
     if (!samples || frames <= 0 || channels <= 0 || channel < -1 ||
@@ -129,12 +130,24 @@ bool repl_render_waveform_rgb(const float *samples, int frames,
         canvas.line(left, center, right, center, 86, 132, 142, 0.9f);
         canvas.line(left, top, left, plotBottom, 86, 132, 142, 0.9f);
 
-        int previousY = sampleY(sampleAt(samples, 0, channels, channel));
+        int startFrame = 0;
+        if (triggerEnabled && frames > 16) {
+            int maxSearch = std::min(frames / 2, 2048);
+            for (int i = 0; i < maxSearch - 1; ++i) {
+                float s0 = sampleAt(samples, i, channels, channel);
+                float s1 = sampleAt(samples, i + 1, channels, channel);
+                if (s0 <= 0.0f && s1 > 0.0f) {
+                    startFrame = i;
+                    break;
+                }
+            }
+        }
+        int activeFrames = frames - startFrame;
+
+        int previousY = sampleY(sampleAt(samples, startFrame, channels, channel));
         for (int column = 0; column < plotWidth; ++column) {
-            int first = static_cast<int>((static_cast<int64_t>(column) * frames) /
-                                         plotWidth);
-            int last = static_cast<int>((static_cast<int64_t>(column + 1) * frames) /
-                                        plotWidth);
+            int first = startFrame + static_cast<int>((static_cast<int64_t>(column) * activeFrames) / plotWidth);
+            int last = startFrame + static_cast<int>((static_cast<int64_t>(column + 1) * activeFrames) / plotWidth);
             if (last <= first) last = first + 1;
             if (last > frames) last = frames;
             float low = sampleAt(samples, first, channels, channel);

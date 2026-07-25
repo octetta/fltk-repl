@@ -64,6 +64,39 @@ void heatColor(float level, uint8_t *pixel) {
     }
 }
 
+void renderColor(float level, int cmap, uint8_t *pixel) {
+    level = std::clamp(level, 0.0f, 1.0f);
+    if (cmap == 1) { // Viridis
+        static constexpr float stops[][3] = {
+            {68.0f, 1.0f, 84.0f},
+            {59.0f, 82.0f, 139.0f},
+            {33.0f, 145.0f, 140.0f},
+            {94.0f, 201.0f, 98.0f},
+            {253.0f, 231.0f, 37.0f}
+        };
+        const float pos = level * 4.0f;
+        const int idx = std::min(static_cast<int>(pos), 3);
+        const float frac = pos - static_cast<float>(idx);
+        for (int c = 0; c < 3; ++c) {
+            float v = stops[idx][c] + (stops[idx + 1][c] - stops[idx][c]) * frac;
+            pixel[c] = static_cast<uint8_t>(v + 0.5f);
+        }
+    } else if (cmap == 2) { // CRT Green Phosphor
+        pixel[0] = static_cast<uint8_t>(level * level * 100.0f);
+        pixel[1] = static_cast<uint8_t>(std::sqrt(level) * 255.0f);
+        pixel[2] = static_cast<uint8_t>(level * level * 140.0f);
+    } else if (cmap == 3) { // Amber CRT
+        pixel[0] = static_cast<uint8_t>(std::sqrt(level) * 255.0f);
+        pixel[1] = static_cast<uint8_t>(level * 180.0f);
+        pixel[2] = static_cast<uint8_t>(level * level * 40.0f);
+    } else if (cmap == 4) { // Grayscale
+        uint8_t g = static_cast<uint8_t>(level * 255.0f);
+        pixel[0] = g; pixel[1] = g; pixel[2] = g;
+    } else { // Magma (default)
+        heatColor(level, pixel);
+    }
+}
+
 float sampleAt(const float *samples, int frame, int channels, int channel) {
     if (channel >= 0) {
         const float value = samples[static_cast<size_t>(frame) * channels + channel];
@@ -106,7 +139,8 @@ void repl_annotate_spectrogram_rgb(std::vector<uint8_t> &rgb,
                                    int frames, int channels, int channel,
                                    const ReplSpectralMetrics *spectralMetrics,
                                    float sampleRate,
-                                   std::vector<ReplVectorLabel> *labels) {
+                                   std::vector<ReplVectorLabel> *labels,
+                                   int scale) {
     if (width < 240 || height < 120 ||
         rgb.size() != static_cast<size_t>(width) * height * 3) return;
 
@@ -126,7 +160,7 @@ void repl_annotate_spectrogram_rgb(std::vector<uint8_t> &rgb,
 
     const int cellHeight = bandHeight - 8;
     const char *displayTitle = title && *title ? title : "spectrogram";
-    const char *axes = "freq ^  time >";
+    const char *axes = (scale == 1) ? "freq(log) ^  time >" : "freq(lin) ^  time >";
     const int axesHeight = fittedCellHeight(axes, width / 3, cellHeight);
     const int axesWidth = repl_vector_text_width(axes, axesHeight);
     const int titleHeight = fittedCellHeight(
@@ -220,7 +254,8 @@ bool repl_render_spectrogram_rgb(const float *samples, int frames,
                                  int channels, int channel,
                                  int width, int height,
                                  std::vector<uint8_t> &rgb,
-                                 ReplSpectralMetrics *metrics) {
+                                 ReplSpectralMetrics *metrics,
+                                 int scale, int cmap) {
     rgb.clear();
     if (metrics) *metrics = {};
     if (!samples || frames <= 0 || channels <= 0 || channel < -1 ||
@@ -264,9 +299,15 @@ bool repl_render_spectrogram_rgb(const float *samples, int frames,
                     spectrum[static_cast<size_t>(bin)] += std::abs(buffer[bin]);
             }
             for (int y = 0; y < height; ++y) {
-                int bin = static_cast<int>((static_cast<int64_t>(y) * half) /
-                                           height);
-                if (bin >= half) bin = half - 1;
+                int bin = 0;
+                if (scale == 1 && half > 1) {
+                    double frac = static_cast<double>(y) / std::max(height - 1, 1);
+                    double log_bin = std::exp(frac * std::log(static_cast<double>(half)));
+                    bin = std::clamp(static_cast<int>(log_bin) - 1, 0, half - 1);
+                } else {
+                    bin = static_cast<int>((static_cast<int64_t>(y) * half) / height);
+                    if (bin >= half) bin = half - 1;
+                }
                 const float magnitude = std::abs(buffer[bin]);
                 magnitudes[static_cast<size_t>(y) * width + x] = magnitude;
                 maximum = std::max(maximum, magnitude);
@@ -331,7 +372,7 @@ bool repl_render_spectrogram_rgb(const float *samples, int frames,
                 const float level = (db - kNoiseFloorDb) / -kNoiseFloorDb;
                 uint8_t *pixel = &rgb[(static_cast<size_t>(destinationY) *
                                       width + x) * 3];
-                heatColor(level, pixel);
+                renderColor(level, cmap, pixel);
             }
         }
     } catch (...) {

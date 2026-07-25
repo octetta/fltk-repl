@@ -16,7 +16,8 @@ bool repl_render_spectrogram_rgb(const float *samples, int frames,
                                  int channels, int channel,
                                  int width, int height,
                                  std::vector<uint8_t> &rgb,
-                                 ReplSpectralMetrics *metrics = nullptr);
+                                 ReplSpectralMetrics *metrics = nullptr,
+                                 int scale = 0, int cmap = 0);
 
 void repl_annotate_spectrogram_rgb(std::vector<uint8_t> &rgb,
                                    int width, int height,
@@ -24,4 +25,5 @@ void repl_annotate_spectrogram_rgb(std::vector<uint8_t> &rgb,
                                    int frames, int channels, int channel,
                                    const ReplSpectralMetrics *spectralMetrics,
                                    float sampleRate = 0.0f,
-                                   std::vector<ReplVectorLabel> *labels = nullptr);
+                                   std::vector<ReplVectorLabel> *labels = nullptr,
+                                   int scale = 0);

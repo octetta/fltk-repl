@@ -130,8 +130,8 @@ clear
 theme light|dark
 font ["font name" [size]]
 bitmap [show|hide|clear]
-spectrogram wave <slot> | record [-1|0|1]
-waveform wave <slot> | record [-1|0|1]
+spectrogram wave <slot> | record [-1|0|1] | scale [linear|log] | cmap [magma|viridis|crt|amber|gray]
+waveform wave <slot> | record [-1|0|1] | trigger [on|off]
 topology <voice> [depth]
 panel load <name> <file.pnl> [key=val ...]
 panel list | ls
