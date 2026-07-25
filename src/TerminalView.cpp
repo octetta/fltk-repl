@@ -94,8 +94,18 @@ void TerminalView::onBufferModifiedTrampolineImpl(int pos, int nInserted, int nD
     }
 }
 
+static Fl_Font get_default_terminal_font() {
+    static Fl_Font f = 0;
+    if (f == 0) {
+        Fl::set_font(FL_FREE_FONT, "JuliaMono");
+        f = FL_FREE_FONT;
+    }
+    return f;
+}
+
 TerminalView::TerminalView(int x, int y, int w, int h)
     : Fl_Text_Editor(x, y, w, h) {
+    font_ = get_default_terminal_font();
     buffer_ = new Fl_Text_Buffer();
     style_ = new Fl_Text_Buffer();
     buffer(buffer_);
@@ -145,6 +155,18 @@ void TerminalView::clearHistory() {
     std::remove(path.c_str());
 }
 
+static int color_to_style_index(int idx) {
+    if (idx < 0) idx = 0;
+    if (idx <= 180) return 4 + idx;
+    if (idx == 196) return 4 + 9;   // Bright Red
+    if (idx == 201) return 4 + 13;  // Bright Pink
+    if (idx == 208) return 4 + 130; // Orange
+    if (idx == 226) return 4 + 11;  // Bright Yellow
+    if (idx == 220) return 4 + 11;  // Bright Yellow
+    if (idx == 231) return 4 + 15;  // Bright White
+    return 4 + (idx % 180);
+}
+
 void TerminalView::rebuildStyleTable() {
     // Calculate luminance of background color to pick high-contrast output shade
     unsigned char r = (colors_.bg >> 16) & 0xFF;
@@ -155,7 +177,7 @@ void TerminalView::rebuildStyleTable() {
     // Style 'A': Muted/slate contrast for output so live input ('C') stands out cleanly
     uint32_t outputColor = isDarkBg ? 0xA0AAB0 : 0x4A5568;
 
-    static Fl_Text_Display::Style_Table_Entry table[260];
+    static Fl_Text_Display::Style_Table_Entry table[191];
     table[0].color = repl_rgb_to_flcolor(outputColor);
     table[0].font  = font_;
     table[0].size  = font_size_;
@@ -177,15 +199,15 @@ void TerminalView::rebuildStyleTable() {
     table[3].size  = font_size_;
     table[3].attr  = Fl_Text_Display::ATTR_UNDERLINE;
 
-    // Styles 'E'..'E'+255 (indices 4..259): 256 ANSI colors
-    for (int i = 0; i < 256; ++i) {
+    // Styles 'E'..'E'+186: 187 ANSI colors
+    for (int i = 0; i < 187; ++i) {
         table[4 + i].color = repl_rgb_to_flcolor(xterm256_to_rgb(i));
         table[4 + i].font  = font_;
         table[4 + i].size  = font_size_;
         table[4 + i].attr  = 0;
     }
 
-    highlight_data(style_, table, 260, 'A', nullptr, nullptr);
+    highlight_data(style_, table, 191, 'A', nullptr, nullptr);
 
     color(repl_rgb_to_flcolor(colors_.bg));
     textfont(font_);
@@ -286,14 +308,12 @@ void TerminalView::appendOutput(const std::string &utf8) {
                     if (code == 0) {
                         current_style = 'A';
                     } else if (code >= 30 && code <= 37) {
-                        current_style = (char)('E' + (code - 30));
+                        current_style = (char)('A' + 4 + (code - 30));
                     } else if (code >= 90 && code <= 97) {
-                        current_style = (char)('E' + 8 + (code - 90));
+                        current_style = (char)('A' + 4 + 8 + (code - 90));
                     } else if (code == 38 && p + 2 < params.size() && params[p + 1] == 5) {
                         int color_idx = params[p + 2];
-                        if (color_idx >= 0 && color_idx <= 255) {
-                            current_style = (char)('E' + color_idx);
-                        }
+                        current_style = (char)('A' + color_to_style_index(color_idx));
                         p += 2;
                     }
                 }
@@ -338,13 +358,21 @@ void TerminalView::styleOutputUrls(int start, int end) {
                !isUrlTerminator(static_cast<unsigned char>(text[finish]))) {
             ++finish;
         }
-        while (finish > begin && isTrailingUrlPunctuation(text[finish - 1]))
+
+        while (finish > begin &&
+               isTrailingUrlPunctuation(text[finish - 1])) {
             --finish;
-        if (finish > begin)
-            style_->replace(start + static_cast<int>(begin),
-                            start + static_cast<int>(finish),
-                            std::string(finish - begin, 'D').c_str());
-        cursor = std::max(finish, begin + 1);
+        }
+
+        if (finish > begin) {
+            int style_pos = start + (int)begin;
+            int style_len = (int)(finish - begin);
+            style_->replace(style_pos, style_pos + style_len,
+                            std::string((size_t)style_len, 'D').c_str());
+            cursor = finish;
+        } else {
+            cursor = begin + 7;
+        }
     }
 }
 

@@ -176,6 +176,53 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
     char cmd[64] = {0}, arg[256] = {0};
     int n = sscanf(line, "%63s %255[^\n]", cmd, arg);
 
+    if (strcmp(cmd, "pacman") == 0 || strcmp(cmd, "waka") == 0 || strcmp(cmd, "ghosts") == 0) {
+        /* Line 0: Top Domes & Pellets */
+        repl_println(app->repl,
+            "\x1b[38;5;226m⢀⣴⣾⣿⣿⣷⣦⡀\x1b[0m  "                  /* Pac-Man Line 0 (Yellow #226) */
+            "⠀⠀⠀⠀⠀⠀⠀⠀  "                                           /* Dot Line 0 */
+            "\x1b[38;5;231m⠀⠀⠀⠀⠀⠀⠀⠀\x1b[0m  "                  /* Power Pellet Line 0 (White #231) */
+            "⠀⠀⠀⠀⠀⠀⠀⠀  "                                           /* Dot Line 0 */
+            "\x1b[38;5;196m⢀⣴⣾⣿⣿⣷⣦⡀\x1b[0m  "                 /* Blinky Line 0 (Red #196) */
+            "\x1b[38;5;201m⢀⣴⣾⣿⣿⣷⣦⡀\x1b[0m  "                 /* Pinky Line 0 (Pink #201) */
+            "\x1b[38;5;51m⢀⣴⣾⣿⣿⣷⣦⡀\x1b[0m  "                  /* Inky Line 0 (Cyan #51) */
+            "\x1b[38;5;208m⢀⣴⣾⣿⣿⣷⣦⡀\x1b[0m");               /* Clyde Line 0 (Orange #208) */
+
+        /* Line 1: Middles & Eyes (Exactly 8 chars per sprite) */
+        repl_println(app->repl,
+            "\x1b[38;5;226m⣾⣿⣿⣿⣿⠿⠛⠁\x1b[0m  "                  /* Pac-Man Line 1 */
+            "\x1b[38;5;220m⠀⠀⠀⣤⣤⠀⠀⠀\x1b[0m  "                  /* Dot Line 1 (Gold #220) */
+            "\x1b[38;5;231m⠀⠀⣾⣿⣿⣷⠀⠀\x1b[0m  "                  /* Power Pellet Line 1 */
+            "\x1b[38;5;220m⠀⠀⠀⣤⣤⠀⠀⠀\x1b[0m  "                  /* Dot Line 1 */
+            "\x1b[38;5;196m⣾⣿\x1b[38;5;231m⠏⠏\x1b[38;5;196m⣿\x1b[38;5;231m⠏⠏\x1b[38;5;196m⣷\x1b[0m  " /* Blinky Line 1 (8 chars) */
+            "\x1b[38;5;201m⣾⣿\x1b[38;5;231m⠏⠏\x1b[38;5;201m⣿\x1b[38;5;231m⠏⠏\x1b[38;5;201m⣷\x1b[0m  " /* Pinky Line 1 (8 chars) */
+            "\x1b[38;5;51m⣾⣿\x1b[38;5;231m⠏⠏\x1b[38;5;51m⣿\x1b[38;5;231m⠏⠏\x1b[38;5;51m⣷\x1b[0m  "  /* Inky Line 1 (8 chars) */
+            "\x1b[38;5;208m⣾⣿\x1b[38;5;231m⠏⠏\x1b[38;5;208m⣿\x1b[38;5;231m⠏⠏\x1b[38;5;208m⣷\x1b[0m"); /* Clyde Line 1 (8 chars) */
+
+        /* Line 2: Lower Body */
+        repl_println(app->repl,
+            "\x1b[38;5;226m⢿⣿⣿⣿⣿⣶⣤⡀\x1b[0m  "                  /* Pac-Man Line 2 */
+            "\x1b[38;5;220m⠀⠀⠀⠛⠛⠀⠀⠀\x1b[0m  "                  /* Dot Line 2 */
+            "\x1b[38;5;231m⠀⠀⢿⣿⣿⡿⠀⠀\x1b[0m  "                  /* Power Pellet Line 2 */
+            "\x1b[38;5;220m⠀⠀⠀⠛⠛⠀⠀⠀\x1b[0m  "                  /* Dot Line 2 */
+            "\x1b[38;5;196m⣿⣿⣿⣿⣿⣿⣿⣿\x1b[0m  "                 /* Blinky Line 2 */
+            "\x1b[38;5;201m⣿⣿⣿⣿⣿⣿⣿⣿\x1b[0m  "                 /* Pinky Line 2 */
+            "\x1b[38;5;51m⣿⣿⣿⣿⣿⣿⣿⣿\x1b[0m  "                  /* Inky Line 2 */
+            "\x1b[38;5;208m⣿⣿⣿⣿⣿⣿⣿⣿\x1b[0m");               /* Clyde Line 2 */
+
+        /* Line 3: Bottom Skirts & Jaws */
+        repl_println(app->repl,
+            "\x1b[38;5;226m⠈⠻⢿⣿⣿⡿⠟⠁\x1b[0m  "                  /* Pac-Man Line 3 */
+            "⠀⠀⠀⠀⠀⠀⠀⠀  "                                           /* Dot Line 3 */
+            "\x1b[38;5;231m⠀⠀⠀⠀⠀⠀⠀⠀\x1b[0m  "                  /* Power Pellet Line 3 */
+            "⠀⠀⠀⠀⠀⠀⠀⠀  "                                           /* Dot Line 3 */
+            "\x1b[38;5;196m⡟⠙⢿⠋⠙⡿⠋⢻\x1b[0m  "                 /* Blinky Line 3 */
+            "\x1b[38;5;201m⡟⠙⢿⠋⠙⡿⠋⢻\x1b[0m  "                 /* Pinky Line 3 */
+            "\x1b[38;5;51m⡟⠙⢿⠋⠙⡿⠋⢻\x1b[0m  "                  /* Inky Line 3 */
+            "\x1b[38;5;208m⡟⠙⢿⠋⠙⡿⠋⢻\x1b[0m");               /* Clyde Line 3 */
+        return;
+    }
+
     if (strcmp(cmd, "bitmap") == 0) {
         bitmap_win_t *bw = bitmap_win_get("default");
         if (n >= 2 && strcmp(arg, "show") == 0) { bitmap_win_show(bw); return; }
