@@ -8,8 +8,9 @@ Core C++17 files live in `src/`; public C-compatible headers are under `include/
 
 - `make` configures a Release build and compiles `build/skrepl` or the macOS `build/skrepl.app` bundle.
 - `make run` rebuilds and launches the FLTK application.
-- `cmake -S . -B build -DSKRED_VERSION=0.52.0` selects a packaged Skred release version.
-- `cmake --build build -j` performs an incremental parallel build.
+- `cmake --build build --target repl_demo` builds the standalone generic C REPL example application (`./build/repl_demo`).
+- `cmake -S . -B build -DSKRED_VERSION=0.53.2` selects a packaged Skred release version.
+- `cmake --build build -j` performs an incremental parallel build of all targets.
 - `ctest --test-dir build --output-on-failure` runs headless SVG, topology, vector-font, spectrogram, and waveform tests.
 - `./build/skrepl --check` verifies the linked release without opening a window or starting audio; on macOS use `./build/skrepl.app/Contents/MacOS/skrepl --check`.
 - `make info` prints relevant cached CMake configuration; `make clean` removes the build directory.

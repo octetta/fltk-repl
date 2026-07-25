@@ -193,6 +193,15 @@ char *repl_save_file_dialog(repl_ctx *ctx, const char *title, const char *filter
 char *repl_choose_directory_dialog(repl_ctx *ctx, const char *title);
 void  repl_free_string(char *s);
 
+/* ---- OS File Descriptor Monitoring (pure C) ---------------------------- */
+
+/* File descriptor event monitoring wrappers for pure C host applications.
+ * Monitors fd for read events when the FLTK event loop is running. */
+typedef void (*repl_fd_fn)(int fd, void *userdata);
+
+void repl_add_fd(int fd, repl_fd_fn cb, void *userdata);
+void repl_remove_fd(int fd);
+
 #ifdef __cplusplus
 }
 #endif

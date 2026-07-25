@@ -47,7 +47,7 @@ endif()
 # ---------------------------------------------------------------------
 # REPL library
 # ---------------------------------------------------------------------
-add_library(replfltk STATIC
+add_library(replfltk
     src/repl_api.cpp src/TerminalView.cpp src/TerminalView.h
     src/Theme.cpp src/Theme.h
     src/Tokenize.cpp src/Tokenize.h src/VectorFont.cpp src/VectorFont.h
@@ -55,17 +55,38 @@ add_library(replfltk STATIC
     src/Spectrogram.cpp src/Spectrogram.h src/Waveform.cpp src/Waveform.h
     src/VoiceTopology.cpp src/VoiceTopology.h
     src/bitmap_win.cpp src/panel_dsl.cpp
-    src/foreign_bridge.cpp
+    src/foreign_bridge.cpp src/EditorWindow.cpp src/EditorWindow.h
     include/repl/bitmap_win.h include/repl/panel_dsl.h
-    include/repl/foreign_bridge.h
+    include/repl/foreign_bridge.h include/repl/editor_win.h
     src/repl_prefs.cpp
 )
+
+add_library(fltk_repl::replfltk ALIAS replfltk)
 
 target_include_directories(replfltk PUBLIC include PRIVATE src ${SKRED_INCLUDE_DIR})
 target_link_libraries(replfltk PUBLIC ${REPL_FLTK_TARGET})
 
 if(APPLE)
     target_link_libraries(replfltk PUBLIC "-framework Cocoa")
+endif()
+
+# Detect top-level vs vendored sub-project build
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    set(FLTK_REPL_IS_TOP_LEVEL ON)
+else()
+    set(FLTK_REPL_IS_TOP_LEVEL OFF)
+endif()
+
+# Standalone generic C REPL demo target
+option(REPL_BUILD_DEMO "Build REPL demo executable" ${FLTK_REPL_IS_TOP_LEVEL})
+if(REPL_BUILD_DEMO)
+    add_executable(repl_demo examples/demo/main.c)
+    target_include_directories(repl_demo PRIVATE include)
+    target_link_libraries(repl_demo PRIVATE replfltk)
+
+    add_executable(repl_pipe_demo examples/pipe_demo/main.c)
+    target_include_directories(repl_pipe_demo PRIVATE include)
+    target_link_libraries(repl_pipe_demo PRIVATE replfltk)
 endif()
 
 # ---------------------------------------------------------------------
@@ -85,8 +106,8 @@ endif()
 # ---------------------------------------------------------------------
 # Download Skred release into vendor/
 # ---------------------------------------------------------------------
-option(SKRED_BUILD_REPL "Build Skred REPL" ON)
-set(SKRED_VERSION "0.53.0" CACHE STRING "Skred version to use")
+option(SKRED_BUILD_REPL "Build Skred REPL" ${FLTK_REPL_IS_TOP_LEVEL})
+set(SKRED_VERSION "0.53.2" CACHE STRING "Skred version to use")
 set(SKRED_ROOT "" CACHE PATH "Path to skred package (auto-filled)")
 
 set(VENDOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor")

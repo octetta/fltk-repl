@@ -1,4 +1,6 @@
 #include "repl/repl_api.h"
+#include "repl/editor_win.h"
+#include "EditorWindow.h"
 #include "TerminalView.h"
 #include "Theme.h"
 #include "Tokenize.h"
@@ -20,6 +22,7 @@
 #include <map>
 #include <cmath>
 #include <string>
+#include <sstream>
 #include <vector>
 
 struct CommandEntry {
@@ -375,12 +378,35 @@ void repl_set_fallback_handler(repl_ctx *ctx, repl_line_fn fn, void *userdata) {
     ctx->fallback_userdata = userdata;
 }
 
+static void cmd_edit(int argc, char **argv, void *ud) {
+    repl_ctx *ctx = (repl_ctx *)ud;
+    EditorWindow *win = editor_win_get_or_create();
+    if (argc >= 2) {
+        win->openFile(argv[1]);
+    }
+    if (ctx) {
+        win->setColors(ctx->term->colors());
+        win->setEvalHandler([ctx](const std::string &code) {
+            std::stringstream ss(code);
+            std::string line;
+            while (std::getline(ss, line)) {
+                if (!line.empty()) {
+                    repl_dispatch_line(ctx, line.c_str());
+                }
+            }
+        });
+    }
+    win->show();
+}
+
 void repl_register_default_commands(repl_ctx *ctx) {
     if (!ctx) return;
     repl_register_command(ctx, "help", cmd_help, ctx);
     repl_register_command(ctx, "clear", cmd_clear, ctx);
     repl_register_command(ctx, "theme", cmd_theme, ctx);
     repl_register_command(ctx, "font", cmd_font, ctx);
+    repl_register_command(ctx, "edit", cmd_edit, ctx);
+    repl_register_command(ctx, "editor", cmd_edit, ctx);
     repl_register_command(ctx, "quit", cmd_quit, ctx);
     repl_register_command(ctx, "exit", cmd_quit, ctx);
 }
@@ -618,4 +644,60 @@ char *repl_choose_directory_dialog(repl_ctx *, const char *title) {
 
 void repl_free_string(char *s) {
     free(s);
+}
+
+void repl_add_fd(int fd, repl_fd_fn cb, void *userdata) {
+    if (fd < 0 || !cb) return;
+    Fl::add_fd(fd, FL_READ, cb, userdata);
+}
+
+void repl_remove_fd(int fd) {
+    if (fd < 0) return;
+    Fl::remove_fd(fd, FL_READ);
+}
+
+// ---------------------------------------------------------------------
+// editor_win C API
+// ---------------------------------------------------------------------
+editor_win *repl_editor_open(repl_ctx *ctx) {
+    EditorWindow *win = editor_win_get_or_create();
+    if (ctx) {
+        win->setColors(ctx->term->colors());
+        win->setEvalHandler([ctx](const std::string &code) {
+            std::stringstream ss(code);
+            std::string line;
+            while (std::getline(ss, line)) {
+                if (!line.empty()) {
+                    repl_dispatch_line(ctx, line.c_str());
+                }
+            }
+        });
+    }
+    win->show();
+    return (editor_win *)win;
+}
+
+editor_win *repl_editor_open_file(repl_ctx *ctx, const char *filepath) {
+    editor_win *win = repl_editor_open(ctx);
+    if (filepath && win) {
+        ((EditorWindow *)win)->openFile(filepath);
+    }
+    return win;
+}
+
+void repl_editor_close(editor_win *win) {
+    if (win) {
+        ((EditorWindow *)win)->hide();
+    }
+}
+
+void repl_editor_set_eval_handler(editor_win *win, editor_eval_fn fn, void *userdata) {
+    if (!win) return;
+    if (fn) {
+        ((EditorWindow *)win)->setEvalHandler([fn, userdata](const std::string &code) {
+            fn(code.c_str(), userdata);
+        });
+    } else {
+        ((EditorWindow *)win)->setEvalHandler(nullptr);
+    }
 }
