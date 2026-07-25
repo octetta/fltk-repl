@@ -46,7 +46,9 @@ public:
     // History access (oldest first).
     int historyCount() const { return (int)history_.size(); }
     const std::string &historyAt(int i) const { return history_.at((size_t)i); }
-    void clearHistory() { history_.clear(); history_pos_ = -1; }
+    void clearHistory();
+    void loadHistory(const std::string &filename = "");
+    void saveHistory(const std::string &filename = "");
 
     int handle(int event) override;
 

@@ -364,6 +364,12 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
         return;
     }
 
+    if (strcmp(cmd, ":clear-history") == 0 || strcmp(cmd, "clear-history") == 0 || strcmp(cmd, "clear_history") == 0) {
+        repl_history_clear(app->repl);
+        repl_println(app->repl, "Command history cleared.");
+        return;
+    }
+
     if (strcmp(cmd, "cd") == 0) {
         if (n < 2) {
             char *dir = repl_choose_directory_dialog(app->repl, "Select Working Directory");
@@ -599,6 +605,8 @@ static void load_appearance_preferences(repl_prefs *prefs, repl_ctx *repl) {
         repl_set_theme(repl, REPL_THEME_LIGHT);
     } else if (strcmp(theme, "dark") == 0) {
         repl_set_theme(repl, REPL_THEME_DARK);
+    } else if (strcmp(theme, "custom") == 0) {
+        repl_load_theme_file(repl, NULL);
     }
 
     repl_prefs_get_string(prefs, "fontname", fontName, sizeof(fontName),
@@ -611,7 +619,8 @@ static void load_appearance_preferences(repl_prefs *prefs, repl_ctx *repl) {
 }
 
 static void save_appearance_preferences(repl_prefs *prefs, repl_ctx *repl) {
-    const char *theme = repl_get_theme(repl) == REPL_THEME_LIGHT ? "light" : "dark";
+    repl_theme t = repl_get_theme(repl);
+    const char *theme = (t == REPL_THEME_LIGHT) ? "light" : ((t == REPL_THEME_DARK) ? "dark" : "custom");
 
     repl_prefs_set_string(prefs, "theme", theme);
     repl_prefs_set_string(prefs, "fontname", repl_get_font_name(repl));
@@ -711,7 +720,7 @@ int main(int argc, char **argv) {
     repl_register_command(app.repl, "boot", cmd_boot, &app);
     repl_register_command(app.repl, "credits", cmd_credits, &app);
     repl_set_fallback_handler(app.repl, bitmap_panel_handler, &app);
-    panel_set_command_handler(panel_to_skred, NULL);
+    panel_set_command_handler(panel_to_skred, &app);
     panel_set_error_handler(panel_error_to_repl, &app);
 
     /* Initialize FLTK's cross-thread awake support before Skred can invoke

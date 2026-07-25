@@ -183,15 +183,63 @@ static void cmd_clear(int, char **, void *ud) {
 static void cmd_theme(int argc, char **argv, void *ud) {
     repl_ctx *ctx = (repl_ctx *)ud;
     if (argc < 2) {
-        repl_println(ctx, "usage: theme light|dark");
+        repl_theme cur = repl_get_theme(ctx);
+        const char *tname = (cur == REPL_THEME_LIGHT) ? "light" : ((cur == REPL_THEME_DARK) ? "dark" : "custom");
+        repl_printf(ctx, "current theme: %s\n", tname);
+        repl_println(ctx, "usage:");
+        repl_println(ctx, "  theme light | dark | custom");
+        repl_println(ctx, "  theme custom <config_file.conf>");
+        repl_println(ctx, "  theme custom <bg> <card> <fg> <accent> <focus> [border]");
+        repl_println(ctx, "  theme save [config_file.conf]");
         return;
     }
+
     if (strcmp(argv[1], "dark") == 0) {
         repl_set_theme(ctx, REPL_THEME_DARK);
+        repl_println(ctx, "theme set to dark");
     } else if (strcmp(argv[1], "light") == 0) {
         repl_set_theme(ctx, REPL_THEME_LIGHT);
+        repl_println(ctx, "theme set to light");
+    } else if (strcmp(argv[1], "custom") == 0) {
+        if (argc >= 6) {
+            // theme custom #0f172a #1e293b #f8f9fa #0d6efd #38bdf8 [#475569]
+            unsigned int bg     = repl_parse_color(argv[2], 0xf1f5f9);
+            unsigned int card   = repl_parse_color(argv[3], 0xffffff);
+            unsigned int fg     = repl_parse_color(argv[4], 0x212529);
+            unsigned int accent = repl_parse_color(argv[5], 0x0d6efd);
+            unsigned int focus  = (argc >= 7) ? repl_parse_color(argv[6], accent) : accent;
+            unsigned int border = (argc >= 8) ? repl_parse_color(argv[7], 0xcbd5e1) : 0xcbd5e1;
+            int is_dark = ((bg & 0xff) + ((bg >> 8) & 0xff) + ((bg >> 16) & 0xff) < 384) ? 1 : 0;
+
+            repl_set_custom_theme(ctx, bg, card, fg, accent, focus, border, is_dark);
+            repl_save_theme_file(ctx, NULL);
+            repl_println(ctx, "custom theme updated and saved to ~/.config/skrepl/theme.conf");
+        } else if (argc == 3) {
+            // theme custom <filepath.conf>
+            if (repl_load_theme_file(ctx, argv[2])) {
+                repl_printf(ctx, "loaded custom theme from %s\n", argv[2]);
+            } else {
+                repl_printf(ctx, "failed to load theme file: %s\n", argv[2]);
+            }
+        } else {
+            // theme custom (load default config file or defaults)
+            if (!repl_load_theme_file(ctx, NULL)) {
+                ReplCustomTheme t;
+                repl_apply_custom_theme(t);
+                ctx->theme = REPL_THEME_CUSTOM;
+                repl_save_theme_file(ctx, NULL);
+            }
+            repl_println(ctx, "custom theme active (from ~/.config/skrepl/theme.conf)");
+        }
+    } else if (strcmp(argv[1], "save") == 0) {
+        const char *filepath = (argc >= 3) ? argv[2] : NULL;
+        if (repl_save_theme_file(ctx, filepath)) {
+            repl_printf(ctx, "theme saved to %s\n", filepath ? filepath : "~/.config/skrepl/theme.conf");
+        } else {
+            repl_println(ctx, "failed to save theme file");
+        }
     } else {
-        repl_println(ctx, "usage: theme light|dark");
+        repl_println(ctx, "usage: theme light|dark|custom|save");
     }
 }
 
@@ -399,6 +447,11 @@ void repl_history_clear(repl_ctx *ctx) {
 
 void repl_set_theme(repl_ctx *ctx, repl_theme theme) {
     if (!ctx) return;
+    if (theme == REPL_THEME_CUSTOM) {
+        ReplCustomTheme t = repl_get_active_custom_theme();
+        repl_set_custom_theme(ctx, t.bg, t.card, t.fg, t.accent, t.focus, t.border, t.is_dark);
+        return;
+    }
     ctx->theme = theme;
     repl_apply_global_scheme(theme == REPL_THEME_DARK);
     ctx->term->setColors(repl_theme_defaults(theme == REPL_THEME_DARK));
@@ -411,6 +464,53 @@ void repl_set_theme(repl_ctx *ctx, repl_theme theme) {
     }
     
     ctx->window->redraw();
+}
+
+int repl_set_custom_theme(repl_ctx *ctx,
+                           unsigned int bg_rgb,
+                           unsigned int card_rgb,
+                           unsigned int fg_rgb,
+                           unsigned int accent_rgb,
+                           unsigned int focus_rgb,
+                           unsigned int border_rgb,
+                           int is_dark) {
+    if (!ctx) return 0;
+    ReplCustomTheme t;
+    t.bg = bg_rgb;
+    t.card = card_rgb;
+    t.fg = fg_rgb;
+    t.accent = accent_rgb;
+    t.focus = focus_rgb;
+    t.border = border_rgb;
+    t.is_dark = (is_dark != 0);
+
+    ctx->theme = REPL_THEME_CUSTOM;
+    repl_apply_custom_theme(t);
+
+    ReplColors rc;
+    rc.bg = bg_rgb;
+    rc.fg = fg_rgb;
+    rc.prompt = accent_rgb;
+    rc.input = fg_rgb;
+    rc.cursor = focus_rgb;
+    ctx->term->setColors(rc);
+    ctx->term->selection_color(repl_rgb_to_flcolor(focus_rgb));
+
+    ctx->window->redraw();
+    return 1;
+}
+
+int repl_load_theme_file(repl_ctx *ctx, const char *filepath) {
+    if (!ctx) return 0;
+    ReplCustomTheme t = repl_get_active_custom_theme();
+    if (!repl_load_theme_file(filepath, t)) return 0;
+    return repl_set_custom_theme(ctx, t.bg, t.card, t.fg, t.accent, t.focus, t.border, t.is_dark);
+}
+
+int repl_save_theme_file(repl_ctx *ctx, const char *filepath) {
+    if (!ctx) return 0;
+    ReplCustomTheme t = repl_get_active_custom_theme();
+    return repl_save_theme_file(filepath, t) ? 1 : 0;
 }
 
 repl_theme repl_get_theme(repl_ctx *ctx) {

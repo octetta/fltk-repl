@@ -1,0 +1,8 @@
+# Skred REPL Custom Theme Configuration
+bg = #181825
+card = #1e1e2e
+fg = #cdd6f4
+accent = #cba6f7
+focus = #f5e0dc
+border = #45475a
+is_dark = true

@@ -52,7 +52,8 @@ typedef void (*repl_line_fn)(const char *line, void *userdata);
 
 typedef enum {
     REPL_THEME_LIGHT = 0,
-    REPL_THEME_DARK  = 1
+    REPL_THEME_DARK  = 1,
+    REPL_THEME_CUSTOM = 2
 } repl_theme;
 
 /* ---- lifecycle ---------------------------------------------------- */
@@ -132,6 +133,18 @@ void repl_history_clear(repl_ctx *ctx);
 
 void repl_set_theme(repl_ctx *ctx, repl_theme theme);
 repl_theme repl_get_theme(repl_ctx *ctx);
+
+/* Custom theme configuration (0xRRGGBB colors) */
+int repl_set_custom_theme(repl_ctx *ctx,
+                           unsigned int bg_rgb,
+                           unsigned int card_rgb,
+                           unsigned int fg_rgb,
+                           unsigned int accent_rgb,
+                           unsigned int focus_rgb,
+                           unsigned int border_rgb,
+                           int is_dark);
+int repl_load_theme_file(repl_ctx *ctx, const char *filepath);
+int repl_save_theme_file(repl_ctx *ctx, const char *filepath);
 
 /* Fine-grained color override, 0xRRGGBB. Call after repl_set_theme()
  * if you want to tweak individual colors rather than use the theme

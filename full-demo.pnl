@@ -1,0 +1,73 @@
+# =====================================================================
+# Full Skred Panel DSL Feature Demonstration
+# =====================================================================
+# Demonstrating every statement, modifier, formatter, layout construct,
+# and multi-line button label formatting supported by the Panel DSL.
+# =====================================================================
+
+window "Master Synthesizer & Panel DSL Showcase" 500 780
+
+# ---------------------------------------------------------------------
+# 1. LABELS & SECTION HEADERS
+# ---------------------------------------------------------------------
+label "-- Oscillator & Pitch Controls --"
+
+# ---------------------------------------------------------------------
+# 2. SLIDERS: Steps, units, float precision, defaults & ~live
+# ---------------------------------------------------------------------
+slider master_vol 0 100 % "master_volume_set %d" =80
+slider pitch_bend -12.0 12.0 0.05 st "pitch_bend_set %.2f" =0.00 ~live
+slider attack 0 5000 10 ms "env_attack_set %d" =250
+
+# ---------------------------------------------------------------------
+# 3. HORIZONTAL ROWS & WEIGHTED COLUMN LAYOUT (@weight)
+# ---------------------------------------------------------------------
+label "-- Filter & Voice Architecture --"
+
+row
+  choice filter_type "lowpass highpass bandpass notch" "filter_type_set %s" =lowpass @2
+  toggle filter_kb "filter_key_track %d" =on @1
+endrow
+
+row
+  slider cutoff 20 20000 10 Hz "filter_cutoff_set %d" =2500 ~live @3
+  slider resonance 0.0 1.0 0.01 "filter_resonance_set %.2f" =0.35 @2
+endrow
+
+# ---------------------------------------------------------------------
+# 4. NUMERIC FIELDS & TOGGLE VARIATIONS
+# ---------------------------------------------------------------------
+label "-- Engine Configuration & Modulation --"
+
+row
+  field polyphony 1 64 "voice_count_set %d" =16 @1
+  field portamento 0 2000 "glide_time_ms_set %d" =120 @1
+  toggle legato "legato_mode_set %d" =off @1
+endrow
+
+# ---------------------------------------------------------------------
+# 5. BUTTON GRIDS & MULTI-LINE LABELS (Line 1: Bold, Line 2: Smaller Italic)
+# ---------------------------------------------------------------------
+# Buttons with \n format: "Line 1 (Bold)\nLine 2 (Italic)"
+label "-- Performance Pads (Two-Line Bold / Italic Buttons) --"
+
+grid 2 4
+  button "C4\nMIDI 60" "note_on 60 100" "note_off 60"
+  button "D4\nMIDI 62" "note_on 62 100" "note_off 62"
+  button "E4\nMIDI 64" "note_on 64 100" "note_off 64"
+  button "F4\nMIDI 65" "note_on 65 100" "note_off 65"
+  button "G4\nMIDI 67" "note_on 67 100" "note_off 67"
+  button "A4\nMIDI 69" "note_on 69 100" "note_off 69"
+  button "B4\nMIDI 71" "note_on 71 100" "note_off 71"
+  button "C5\nMIDI 72" "note_on 72 100" "note_off 72"
+endgrid
+
+# ---------------------------------------------------------------------
+# 6. UTILITY BUTTONS (Noticeable Depressed Color + Multi-Line Subtitles)
+# ---------------------------------------------------------------------
+label "-- Master Action Controls --"
+
+row
+  button "panic\nAll Notes Off" "all_notes_off" @2
+  button "init\nReset Patch" "patch_init_default" @1
+endrow

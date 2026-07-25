@@ -9,7 +9,29 @@
 #include <cstdint>
 #include <cctype>
 
+#include <fstream>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#else
+#include <sys/types.h>
+#include <unistd.h>
+#endif
+
 namespace {
+
+static std::string get_default_history_file() {
+    const char *home = getenv("HOME");
+    if (!home) home = getenv("USERPROFILE");
+    if (!home) return ".skrepl_history";
+    std::string dir = std::string(home) + "/.config/skrepl";
+#ifdef _WIN32
+    _mkdir(dir.c_str());
+#else
+    mkdir(dir.c_str(), 0755);
+#endif
+    return dir + "/history";
+}
 
 bool isUrlTerminator(unsigned char ch) {
     return std::isspace(ch) || ch == '<' || ch == '>' || ch == '"';
@@ -20,12 +42,6 @@ bool isTrailingUrlPunctuation(char ch) {
            ch == '!' || ch == '?' || ch == ')' || ch == ']' || ch == '}';
 }
 
-// FLTK's buffer modify callback has C linkage requirements (plain
-// function pointer), so this free function forwards to the widget's
-// onBufferModified() method, which keeps the style buffer in sync
-// byte-for-byte with the text buffer on every insert/delete -- both
-// ones we make programmatically (appendStyled) and ones the user
-// makes by typing, pasting, or backspacing.
 void s_modify_cb(int pos, int nInserted, int nDeleted, int nRestyled,
                   const char *deletedText, void *cbArg) {
     (void)nRestyled;
@@ -58,13 +74,43 @@ TerminalView::TerminalView(int x, int y, int w, int h)
     cursor_style(Fl_Text_Display::NORMAL_CURSOR);
     linenumber_width(0);
     rebuildStyleTable();
+    loadHistory();
 }
 
 TerminalView::~TerminalView() {
+    saveHistory();
     buffer_->remove_modify_callback(s_modify_cb, this);
     buffer(nullptr);
     delete buffer_;
     delete style_;
+}
+
+void TerminalView::loadHistory(const std::string &filename) {
+    std::string path = filename.empty() ? get_default_history_file() : filename;
+    std::ifstream in(path.c_str());
+    if (!in.is_open()) return;
+    history_.clear();
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty()) history_.push_back(line);
+    }
+    history_pos_ = -1;
+}
+
+void TerminalView::saveHistory(const std::string &filename) {
+    std::string path = filename.empty() ? get_default_history_file() : filename;
+    std::ofstream out(path.c_str());
+    if (!out.is_open()) return;
+    for (size_t i = 0; i < history_.size(); ++i) {
+        out << history_[i] << "\n";
+    }
+}
+
+void TerminalView::clearHistory() {
+    history_.clear();
+    history_pos_ = -1;
+    std::string path = get_default_history_file();
+    std::remove(path.c_str());
 }
 
 void TerminalView::rebuildStyleTable() {
@@ -479,6 +525,7 @@ int TerminalView::handle(int event) {
             appendStyled("\n", 'A');
             if (!line.empty()) {
                 history_.push_back(line);
+                saveHistory();
             }
             history_pos_ = -1;
             saved_live_edit_.clear();

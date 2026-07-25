@@ -1,4 +1,5 @@
 #include "repl/panel_dsl.h"
+#include "Theme.h"
 
 #include <FL/Fl.H>
 #include <FL/Fl_Double_Window.H>
@@ -10,6 +11,7 @@
 #include <FL/Fl_Button.H>
 #include <FL/Fl_Choice.H>
 #include <FL/Fl_Menu_Item.H>
+#include <FL/fl_draw.H>
 
 #include <cstdio>
 #include <cstdlib>
@@ -150,7 +152,13 @@ std::vector<Token> tokenize(const std::string &line) {
             size_t j = i + 1;
             std::string tok;
             while (j < n && line[j] != '"') {
-                if (line[j] == '\\' && j + 1 < n) { tok += line[j + 1]; j += 2; }
+                if (line[j] == '\\' && j + 1 < n) {
+                    if (line[j + 1] == 'n') tok += '\n';
+                    else if (line[j + 1] == 'r') tok += '\r';
+                    else if (line[j + 1] == 't') tok += '\t';
+                    else tok += line[j + 1];
+                    j += 2;
+                }
                 else { tok += line[j]; ++j; }
             }
             out.push_back(Token{tok, true});
@@ -452,7 +460,8 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
             it.type = IT_BUTTON;
             it.name = rest[0].text;
             if (rest.size() == 2) {
-                it.tmpl = rest[1].text;
+                it.tmpl_press = rest[1].text;
+                it.tmpl = "";
             } else if (rest.size() == 3) {
                 it.tmpl_press = rest[1].text;
                 it.tmpl = rest[2].text;
@@ -756,6 +765,16 @@ protected:
         return r;
     }
 
+    void draw() override {
+        Fl_Slider::draw();
+        if (Fl::focus() == this) {
+            ReplCustomTheme theme = repl_get_active_custom_theme();
+            Fl_Color focus_col = repl_rgb_to_flcolor(theme.focus);
+            fl_color(focus_col);
+            fl_rounded_rect(x() + 1, y() + 1, w() - 2, h() - 2, 4);
+        }
+    }
+
 private:
     void update_display() {
         if (!label_box_) return;
@@ -776,25 +795,220 @@ private:
     double press_value_ = 0;
 };
 
+class SectionHeader : public Fl_Widget {
+public:
+    SectionHeader(int x, int y, int w, int h, const char *title = NULL)
+        : Fl_Widget(x, y, w, h, title) {
+        if (title) clean_title_ = clean_text(title);
+    }
+
+    static std::string clean_text(const std::string &raw) {
+        std::string s = raw;
+        size_t start = 0;
+        while (start < s.size() && (s[start] == '-' || s[start] == ' ' || s[start] == '\t')) start++;
+        size_t end = s.size();
+        while (end > start && (s[end - 1] == '-' || s[end - 1] == ' ' || s[end - 1] == '\t')) end--;
+        return s.substr(start, end - start);
+    }
+
+    void draw() override {
+        int bx = x(), by = y(), bw = w(), bh = h();
+        ReplCustomTheme theme = repl_get_active_custom_theme();
+        Fl_Color accent = theme.is_dark ? fl_rgb_color(0x94, 0xa3, 0xb8) : fl_rgb_color(0x47, 0x55, 0x69);
+        Fl_Color line_col = repl_rgb_to_flcolor(theme.border);
+
+        int text_w = 0, text_h = 0;
+        fl_font(FL_HELVETICA_BOLD, 13);
+
+        if (!clean_title_.empty()) {
+            fl_measure(clean_title_.c_str(), text_w, text_h, 0);
+            fl_color(accent);
+            fl_draw(clean_title_.c_str(), bx, by, text_w, bh, FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
+        }
+
+        int line_x1 = clean_title_.empty() ? bx : (bx + text_w + 10);
+        int line_x2 = bx + bw;
+        int line_y = by + bh / 2;
+
+        if (line_x2 > line_x1) {
+            fl_color(line_col);
+            fl_line(line_x1, line_y, line_x2, line_y);
+        }
+    }
+
+private:
+    std::string clean_title_;
+};
+
 class ModalButton : public Fl_Button {
 public:
-    ModalButton(int x, int y, int w, int h) : Fl_Button(x, y, w, h, ""), binding_(NULL) {}
+    ModalButton(int x, int y, int w, int h)
+        : Fl_Button(x, y, w, h, ""), binding_(NULL), shortcut_digit_(0) {}
+
     void set_binding(ItemBinding *b) { binding_ = b; }
+    void set_shortcut_digit(int digit) {
+        shortcut_digit_ = digit;
+        if (digit >= 1 && digit <= 9) {
+            shortcut('0' + digit);
+        }
+    }
+    int shortcut_digit() const { return shortcut_digit_; }
+
+    void trigger_press() {
+        value(1);
+        if (binding_ && !binding_->tmpl_press.empty()) {
+            dispatch(binding_->tmpl_press);
+        }
+        redraw();
+    }
+
+    void trigger_release() {
+        value(0);
+        if (binding_ && !binding_->tmpl.empty()) {
+            dispatch(binding_->tmpl);
+        }
+        redraw();
+    }
+
+    void draw() override {
+        int bx = x(), by = y(), bw = w(), bh = h();
+        bool is_down = (value() != 0) || (Fl::pushed() == this);
+        bool has_focus = (Fl::focus() == this);
+
+        // 1. Depressed / Active State vs Up State
+        if (is_down) {
+            Fl_Color bg = fl_rgb_color(0x0d, 0x6e, 0xfd);     // #0d6efd Primary Blue
+            Fl_Color border = fl_rgb_color(0x0b, 0x5e, 0xd7); // #0b5ed7 Darker border
+            fl_color(bg);
+            fl_rounded_rectf(bx, by, bw, bh, 4);
+            fl_color(border);
+            fl_rounded_rect(bx, by, bw, bh, 4);
+        } else {
+            draw_box();
+            if (has_focus) {
+                uchar r = 0, g = 0, b = 0;
+                Fl::get_color(FL_BACKGROUND_COLOR, r, g, b);
+                bool is_dark = (r < 128);
+                Fl_Color focus_col = is_dark ? fl_rgb_color(0x38, 0xbd, 0xf8) : fl_rgb_color(0x0d, 0x6e, 0xfd);
+                fl_color(focus_col);
+                fl_rounded_rect(bx, by, bw, bh, 4);
+            }
+        }
+
+        // 2. Multiline (two-line) formatting vs single-line label
+        const char *lbl = label();
+        if (lbl && *lbl) {
+            const char *nl = strchr(lbl, '\n');
+            Fl_Color text_col = is_down ? FL_WHITE : labelcolor();
+
+            if (nl) {
+                std::string line1(lbl, nl - lbl);
+                std::string line2(nl + 1);
+
+                fl_color(text_col);
+
+                // Line 1: Larger Bold Text (top portion)
+                fl_font(FL_HELVETICA_BOLD, 13);
+                fl_draw(line1.c_str(), bx, by + 4, bw, bh / 2 - 2, FL_ALIGN_CENTER);
+
+                // Line 2: Smaller Italic Text (bottom portion, no overlap)
+                fl_font(FL_HELVETICA_ITALIC, 10);
+                fl_draw(line2.c_str(), bx, by + bh / 2 + 1, bw, bh / 2 - 4, FL_ALIGN_CENTER);
+            } else {
+                if (is_down) {
+                    Fl_Color old_color = labelcolor();
+                    labelcolor(FL_WHITE);
+                    draw_label();
+                    labelcolor(old_color);
+                } else {
+                    draw_label();
+                }
+            }
+        }
+
+        // 3. Draw shortcut badge [1]..[8] if set
+        if (shortcut_digit_ >= 1 && shortcut_digit_ <= 9) {
+            char badge[8];
+            snprintf(badge, sizeof badge, "[%d]", shortcut_digit_);
+            fl_font(FL_HELVETICA_BOLD, 10);
+            Fl_Color badge_col = is_down ? fl_rgb_color(0xe0, 0xf2, 0xfe) : fl_rgb_color(0x0d, 0x6e, 0xfd);
+            fl_color(badge_col);
+            fl_draw(badge, bx + bw - 28, by + 4, 22, 12, FL_ALIGN_RIGHT);
+        }
+    }
 
 protected:
     int handle(int event) override {
-        int r = Fl_Button::handle(event);
-        if (!binding_) return r;
-        if (event == FL_PUSH && !binding_->tmpl_press.empty()) {
-            dispatch(binding_->tmpl_press);
+        if (event == FL_FOCUS || event == FL_UNFOCUS) {
+            redraw();
+            if (parent()) parent()->redraw();
+            return Fl_Button::handle(event);
+        }
+
+        if (event == FL_PUSH) {
+            trigger_press();
+            return 1;
         } else if (event == FL_RELEASE) {
-            if (!binding_->tmpl.empty()) dispatch(binding_->tmpl);
+            trigger_release();
+            return 1;
+        }
+
+        int old_val = value();
+        int r = Fl_Button::handle(event);
+        int new_val = value();
+
+        if (binding_) {
+            if (old_val == 0 && new_val == 1) {
+                trigger_press();
+            } else if (old_val == 1 && new_val == 0) {
+                trigger_release();
+            }
         }
         return r;
     }
 
 private:
     ItemBinding *binding_;
+    int shortcut_digit_;
+};
+
+class GridGroup : public Fl_Group {
+public:
+    GridGroup(int x, int y, int w, int h)
+        : Fl_Group(x, y, w, h), active_digit_(0) {
+        box(FL_NO_BOX);
+    }
+
+    void draw() override {
+        int bx = x(), by = y(), bw = w(), bh = h();
+        bool has_focus = (Fl::focus() != nullptr && (Fl::focus() == this || contains(Fl::focus())));
+
+        ReplCustomTheme theme = repl_get_active_custom_theme();
+        Fl_Color card_bg = repl_rgb_to_flcolor(theme.card);
+        Fl_Color border_col = has_focus
+            ? repl_rgb_to_flcolor(theme.focus)
+            : repl_rgb_to_flcolor(theme.border);
+
+        fl_color(card_bg);
+        fl_rounded_rectf(bx - 4, by - 4, bw + 8, bh + 8, 6);
+        fl_color(border_col);
+        fl_line_style(FL_SOLID, has_focus ? 2 : 1);
+        fl_rounded_rect(bx - 4, by - 4, bw + 8, bh + 8, 6);
+        fl_line_style(0);
+
+        Fl_Group::draw();
+    }
+
+    int handle(int event) override {
+        if (event == FL_FOCUS || event == FL_UNFOCUS) {
+            redraw();
+            return Fl_Group::handle(event);
+        }
+        return Fl_Group::handle(event);
+    }
+
+private:
+    int active_digit_;
 };
 
 void field_cb(Fl_Widget *w, void *ud) {
@@ -807,6 +1021,32 @@ void toggle_cb(Fl_Widget *w, void *ud) {
     ItemBinding *b = (ItemBinding *)ud;
     long v = ((Fl_Check_Button *)w)->value() ? 1 : 0;
     dispatch(format_template_int(b->tmpl, v));
+}
+
+static void collect_focusable_controls(Fl_Widget *w, std::vector<Fl_Widget*> &out) {
+    if (!w || !w->visible()) return;
+    if (Fl_Group *g = w->as_group()) {
+        for (int i = 0; i < g->children(); ++i) {
+            collect_focusable_controls(g->child(i), out);
+        }
+    } else {
+        if (w->takesevents() && !dynamic_cast<Fl_Box*>(w) && !dynamic_cast<SectionHeader*>(w)) {
+            out.push_back(w);
+        }
+    }
+}
+
+static void collect_grid_buttons(Fl_Widget *w, std::vector<ModalButton*> &out) {
+    if (!w) return;
+    if (ModalButton *b = dynamic_cast<ModalButton*>(w)) {
+        if (dynamic_cast<GridGroup*>(b->parent()) != nullptr) {
+            out.push_back(b);
+        }
+    } else if (Fl_Group *g = w->as_group()) {
+        for (int i = 0; i < g->children(); ++i) {
+            collect_grid_buttons(g->child(i), out);
+        }
+    }
 }
 
 void choice_cb(Fl_Widget *w, void *ud) {
@@ -828,13 +1068,15 @@ const int H_CONTROL = 44;
 const int H_TOGGLE = 26;
 const int H_BUTTON = 28;
 const int H_LABEL = 22;
-const int H_GRID_BUTTON = 32;
+const int H_GRID_BUTTON = 54;
 
 int item_height(const ParsedItem &it) {
     switch (it.type) {
         case IT_SLIDER: case IT_FIELD: case IT_CHOICE: return H_CONTROL;
         case IT_TOGGLE: return H_TOGGLE;
-        case IT_BUTTON: return H_BUTTON;
+        case IT_BUTTON:
+            if (it.name.find('\n') != std::string::npos) return 54;
+            return H_BUTTON;
         case IT_LABEL: return H_LABEL;
     }
     return H_CONTROL;
@@ -891,6 +1133,7 @@ struct LayoutGridCell {
 };
 
 struct LayoutGridBlock {
+    GridGroup *group = NULL;
     int rows = 0, cols = 0;
     int base_cell_h = 0; /* height as originally built; grows on resize, never shrinks below this */
     std::vector<LayoutGridCell> cells;
@@ -959,8 +1202,13 @@ void reflow_panel(panel_win_t *pw, int W, int H) {
         if (blk.kind == BK_GRID) {
             LayoutGridBlock &g = blk.grid;
             int cell_h = g.base_cell_h + extra_per_row;
+            int grid_h = g.rows * cell_h + (g.rows - 1) * GAP_Y;
             std::vector<int> weights(g.cols, 1);
             std::vector<std::pair<int, int> > cols = compute_cols(content_w, weights);
+
+            if (g.group) {
+                g.group->resize(cols[0].first, y, content_w, grid_h);
+            }
 
             for (size_t ci = 0; ci < g.cells.size(); ++ci) {
                 LayoutGridCell &cell = g.cells[ci];
@@ -970,7 +1218,6 @@ void reflow_panel(panel_win_t *pw, int W, int H) {
                 cell.btn->resize(cx, cy, cw, cell_h);
             }
 
-            int grid_h = g.rows * cell_h + (g.rows - 1) * GAP_Y;
             y += grid_h + GAP_Y;
             continue;
         }
@@ -996,10 +1243,54 @@ void reflow_panel(panel_win_t *pw, int W, int H) {
     }
 }
 
+
+
+
+
+struct KeyReleaseInfo {
+    class PanelWindow *win;
+    int digit;
+};
+
+static void key_release_timer_cb(void *data);
+
 class PanelWindow : public Fl_Double_Window {
 public:
     PanelWindow(int W, int H, const char *title)
-        : Fl_Double_Window(W, H, title), owner_(NULL) {}
+        : Fl_Double_Window(W, H, title), owner_(NULL) {
+        for (int i = 0; i < 8; ++i) {
+            key_down_state_[i] = false;
+            release_pending_[i] = false;
+            release_info_[i] = NULL;
+        }
+    }
+
+    ~PanelWindow() {
+        for (int i = 0; i < 8; ++i) {
+            if (release_pending_[i] && release_info_[i]) {
+                Fl::remove_timeout(key_release_timer_cb, release_info_[i]);
+                delete release_info_[i];
+                release_info_[i] = NULL;
+            }
+        }
+    }
+
+    void finish_key_release(int digit) {
+        if (digit >= 0 && digit < 8) {
+            release_pending_[digit] = false;
+            release_info_[digit] = NULL;
+            if (key_down_state_[digit]) {
+                key_down_state_[digit] = false;
+                if (owner_ && owner_->content) {
+                    std::vector<ModalButton*> btns;
+                    collect_grid_buttons(owner_->content, btns);
+                    if (digit < (int)btns.size()) {
+                        btns[digit]->trigger_release();
+                    }
+                }
+            }
+        }
+    }
 
     void set_owner(panel_win_t *owner) { owner_ = owner; }
 
@@ -1010,9 +1301,103 @@ public:
         reflow_panel(owner_, W, H);
     }
 
+    int handle(int event) override {
+        if (event == FL_KEYBOARD) {
+            int key = Fl::event_key();
+
+            // 1. Tab & Shift+Tab Focus Wrap-Around
+            if (key == FL_Tab && owner_ && owner_->content) {
+                std::vector<Fl_Widget*> controls;
+                collect_focusable_controls(owner_->content, controls);
+                if (!controls.empty()) {
+                    Fl_Widget *cur = Fl::focus();
+                    int cur_idx = -1;
+                    for (size_t i = 0; i < controls.size(); ++i) {
+                        if (controls[i] == cur) { cur_idx = (int)i; break; }
+                    }
+
+                    bool shift = (Fl::event_state() & FL_SHIFT) != 0;
+                    if (!shift) {
+                        int next_idx = (cur_idx < 0 || cur_idx >= (int)controls.size() - 1) ? 0 : (cur_idx + 1);
+                        controls[next_idx]->take_focus();
+                        redraw();
+                        return 1;
+                    } else {
+                        int next_idx = (cur_idx <= 0) ? ((int)controls.size() - 1) : (cur_idx - 1);
+                        controls[next_idx]->take_focus();
+                        redraw();
+                        return 1;
+                    }
+                }
+            }
+
+            // 2. Universal Keys 1..8 Grid Button Shortcuts Across All Grids
+            bool is_text_input = (Fl::focus() != nullptr && dynamic_cast<Fl_Input_*>(Fl::focus()) != nullptr);
+            if (!is_text_input) {
+                const char *txt = Fl::event_text();
+                int digit = -1;
+                if (key >= '1' && key <= '8') digit = key - '1';
+                else if (key >= FL_KP + '1' && key <= FL_KP + '8') digit = key - (FL_KP + '1');
+                else if (txt && txt[0] >= '1' && txt[0] <= '8') digit = txt[0] - '1';
+
+                if (digit >= 0 && digit < 8 && owner_ && owner_->content) {
+                    if (release_pending_[digit] && release_info_[digit]) {
+                        Fl::remove_timeout(key_release_timer_cb, release_info_[digit]);
+                        delete release_info_[digit];
+                        release_info_[digit] = NULL;
+                        release_pending_[digit] = false;
+                    }
+
+                    if (!key_down_state_[digit]) {
+                        key_down_state_[digit] = true;
+                        std::vector<ModalButton*> btns;
+                        collect_grid_buttons(owner_->content, btns);
+                        if (digit < (int)btns.size()) {
+                            btns[digit]->trigger_press();
+                        }
+                    }
+                    return 1;
+                }
+            }
+        } else if (event == FL_KEYUP) {
+            // 3. Universal Keys 1..8 Grid Button Shortcuts (release debounced for X11 auto-repeat)
+            bool is_text_input = (Fl::focus() != nullptr && dynamic_cast<Fl_Input_*>(Fl::focus()) != nullptr);
+            if (!is_text_input) {
+                int key = Fl::event_key();
+                const char *txt = Fl::event_text();
+                int digit = -1;
+                if (key >= '1' && key <= '8') digit = key - '1';
+                else if (key >= FL_KP + '1' && key <= FL_KP + '8') digit = key - (FL_KP + '1');
+                else if (txt && txt[0] >= '1' && txt[0] <= '8') digit = txt[0] - '1';
+
+                if (digit >= 0 && digit < 8 && owner_ && owner_->content) {
+                    if (key_down_state_[digit] && !release_pending_[digit]) {
+                        release_pending_[digit] = true;
+                        KeyReleaseInfo *info = new KeyReleaseInfo{this, digit};
+                        release_info_[digit] = info;
+                        Fl::add_timeout(0.015, key_release_timer_cb, info);
+                    }
+                    return 1;
+                }
+            }
+        }
+
+        return Fl_Double_Window::handle(event);
+    }
+
 private:
     panel_win_t *owner_;
+    bool key_down_state_[8];
+    bool release_pending_[8];
+    KeyReleaseInfo *release_info_[8];
 };
+
+static void key_release_timer_cb(void *data) {
+    KeyReleaseInfo *info = (KeyReleaseInfo*)data;
+    if (info && info->win) {
+        info->win->finish_key_release(info->digit);
+    }
+}
 
 int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
     pw->content->clear();
@@ -1036,6 +1421,12 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
             lb.grid.cols = g.cols;
             lb.grid.base_cell_h = H_GRID_BUTTON;
 
+            int grid_h = g.rows * H_GRID_BUTTON + (g.rows - 1) * GAP_Y;
+            GridGroup *gg = new GridGroup(cols[0].first, y, content_w, grid_h);
+            lb.grid.group = gg;
+            pw->content->add(gg);
+            gg->begin();
+
             for (int r = 0; r < g.rows; ++r) {
                 int cell_y = y + r * (H_GRID_BUTTON + GAP_Y);
                 for (int c = 0; c < g.cols; ++c) {
@@ -1050,20 +1441,20 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     pw->bindings.push_back(bind);
 
                     ModalButton *b = new ModalButton(cols[c].first, cell_y, cols[c].second, H_GRID_BUTTON);
+                    b->box(FL_UP_BOX);
                     b->copy_label(it.name.c_str());
                     b->align(FL_ALIGN_CENTER);
                     b->set_binding(bind);
                     b->user_data(bind);
-                    pw->content->add(b);
-
+                    if (idx < 8) b->set_shortcut_digit(idx + 1);
                     LayoutGridCell cell;
                     cell.btn = b; cell.row = r; cell.col = c;
                     lb.grid.cells.push_back(cell);
                 }
             }
+            gg->end();
 
             pw->blocks.push_back(lb);
-            int grid_h = g.rows * H_GRID_BUTTON + (g.rows - 1) * GAP_Y;
             y += grid_h + GAP_Y;
             continue;
         }
@@ -1102,7 +1493,10 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     Fl_Box *lbl = new Fl_Box(x, y, iw, 14, "");
                     lbl->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
                     LiveSlider *s = new LiveSlider(x, y + 16, iw, rh - 16);
-                    s->type(FL_HOR_NICE_SLIDER);
+                    s->type(FL_HOR_SLIDER);
+                    s->box(FL_THIN_DOWN_BOX);
+                    s->color(fl_rgb_color(0xe2, 0xe8, 0xf0));           // #e2e8f0 recessed slate track trough
+                    s->selection_color(fl_rgb_color(0x0d, 0x6e, 0xfd)); // #0d6efd Primary Blue thumb/knob
                     s->bounds(it.min, it.max);
                     if (it.has_step) s->step(it.step);
                     s->value(it.has_default ? it.default_num : (it.min + it.max) / 2.0);
@@ -1120,6 +1514,10 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     lbl->copy_label(it.name.c_str());
                     lbl->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
                     Fl_Int_Input *f = new Fl_Int_Input(x, y + 16, iw, rh - 16, "");
+                    f->box(FL_THIN_DOWN_BOX);
+                    f->color(fl_rgb_color(0xff, 0xff, 0xff));           // crisp white input field
+                    f->selection_color(fl_rgb_color(0xc7, 0xd2, 0xfe)); // soft sky blue text selection background
+                    f->textcolor(FL_FOREGROUND_COLOR);
                     char defbuf[32];
                     snprintf(defbuf, sizeof defbuf, "%d", it.has_default ? (int)it.default_num : (int)it.min);
                     f->value(defbuf);
@@ -1133,6 +1531,7 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                 }
                 case IT_TOGGLE: {
                     Fl_Check_Button *c = new Fl_Check_Button(x, y, iw, rh, "");
+                    c->box(FL_FLAT_BOX);
                     c->copy_label(it.name.c_str());
                     c->value(it.has_default && it.default_bool ? 1 : 0);
                     c->callback(toggle_cb, bind);
@@ -1142,6 +1541,7 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                 }
                 case IT_BUTTON: {
                     ModalButton *b = new ModalButton(x, y, iw, rh);
+                    b->box(FL_UP_BOX);
                     b->copy_label(it.name.c_str());
                     b->align(FL_ALIGN_CENTER);
                     b->set_binding(bind);
@@ -1155,6 +1555,7 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     lbl->copy_label(it.name.c_str());
                     lbl->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
                     Fl_Choice *ch = new Fl_Choice(x, y + 16, iw, rh - 16, "");
+                    ch->box(FL_THIN_DOWN_BOX);
                     int default_idx = 0;
                     for (size_t oi = 0; oi < it.options.size(); ++oi) {
                         ch->add(it.options[oi].c_str());
@@ -1169,10 +1570,7 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     break;
                 }
                 case IT_LABEL: {
-                    Fl_Box *lbl = new Fl_Box(x, y, iw, rh, "");
-                    lbl->copy_label(it.text.c_str());
-                    lbl->labelfont(FL_HELVETICA_BOLD);
-                    lbl->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
+                    SectionHeader *lbl = new SectionHeader(x, y, iw, rh, it.text.c_str());
                     pw->content->add(lbl);
                     litem.control = lbl;
                     break;
@@ -1184,6 +1582,16 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
 
         pw->blocks.push_back(lb);
         y += rh + GAP_Y;
+    }
+
+    std::vector<ModalButton*> all_grid_btns;
+    collect_grid_buttons(pw->content, all_grid_btns);
+    for (size_t i = 0; i < all_grid_btns.size(); ++i) {
+        if (i < 8) {
+            all_grid_btns[i]->set_shortcut_digit((int)i + 1);
+        } else {
+            all_grid_btns[i]->set_shortcut_digit(0);
+        }
     }
 
     return y + MARGIN;
