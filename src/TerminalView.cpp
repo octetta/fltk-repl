@@ -8,6 +8,7 @@
 #include <cstring>
 #include <cstdint>
 #include <cctype>
+#include <sstream>
 
 #include <fstream>
 #include <sys/stat.h>
@@ -17,6 +18,37 @@
 #include <sys/types.h>
 #include <unistd.h>
 #endif
+
+namespace {
+static uint32_t xterm256_to_rgb(int idx) {
+    if (idx < 0) idx = 0;
+    if (idx > 255) idx = 255;
+    if (idx < 8) {
+        static const uint32_t std_cols[8] = {
+            0x000000, 0xCD0000, 0x00CD00, 0xCDCD00,
+            0x0000EE, 0xCD00CD, 0x00CDCD, 0xE5E5E5
+        };
+        return std_cols[idx];
+    }
+    if (idx < 16) {
+        static const uint32_t bright_cols[8] = {
+            0x7F7F7F, 0xFF0000, 0x00FF00, 0xFFFF00,
+            0x5C5CFF, 0xFF00FF, 0x00FFFF, 0xFFFFFF
+        };
+        return bright_cols[idx - 8];
+    }
+    if (idx < 232) {
+        int n = idx - 16;
+        int r = n / 36;
+        int g = (n / 6) % 6;
+        int b = n % 6;
+        static const unsigned char steps[6] = {0, 95, 135, 175, 215, 255};
+        return ((uint32_t)steps[r] << 16) | ((uint32_t)steps[g] << 8) | (uint32_t)steps[b];
+    }
+    unsigned char gray = (unsigned char)(8 + (idx - 232) * 10);
+    return ((uint32_t)gray << 16) | ((uint32_t)gray << 8) | (uint32_t)gray;
+}
+}
 
 namespace {
 
@@ -123,7 +155,7 @@ void TerminalView::rebuildStyleTable() {
     // Style 'A': Muted/slate contrast for output so live input ('C') stands out cleanly
     uint32_t outputColor = isDarkBg ? 0xA0AAB0 : 0x4A5568;
 
-    static Fl_Text_Display::Style_Table_Entry table[4];
+    static Fl_Text_Display::Style_Table_Entry table[260];
     table[0].color = repl_rgb_to_flcolor(outputColor);
     table[0].font  = font_;
     table[0].size  = font_size_;
@@ -145,7 +177,15 @@ void TerminalView::rebuildStyleTable() {
     table[3].size  = font_size_;
     table[3].attr  = Fl_Text_Display::ATTR_UNDERLINE;
 
-    highlight_data(style_, table, 4, 'A', nullptr, nullptr);
+    // Styles 'E'..'E'+255 (indices 4..259): 256 ANSI colors
+    for (int i = 0; i < 256; ++i) {
+        table[4 + i].color = repl_rgb_to_flcolor(xterm256_to_rgb(i));
+        table[4 + i].font  = font_;
+        table[4 + i].size  = font_size_;
+        table[4 + i].attr  = 0;
+    }
+
+    highlight_data(style_, table, 260, 'A', nullptr, nullptr);
 
     color(repl_rgb_to_flcolor(colors_.bg));
     textfont(font_);
@@ -200,11 +240,80 @@ void TerminalView::appendStyled(const std::string &utf8, char styleChar) {
 }
 
 void TerminalView::appendOutput(const std::string &utf8) {
-    const int start = buffer_->length();
-    appendStyled(utf8, 'A');
-    styleOutputUrls(start, buffer_->length());
-    insert_position(buffer_->length());
-    show_insert_position();
+    if (utf8.empty()) return;
+
+    if (utf8.find('\033') == std::string::npos && utf8.find('\x1b') == std::string::npos) {
+        const int start = buffer_->length();
+        appendStyled(utf8, 'A');
+        styleOutputUrls(start, buffer_->length());
+        insert_position(buffer_->length());
+        show_insert_position();
+        return;
+    }
+
+    std::string clean_text;
+    clean_text.reserve(utf8.size());
+    std::string style_bytes;
+    style_bytes.reserve(utf8.size());
+
+    char current_style = 'A';
+    size_t i = 0;
+    size_t len = utf8.size();
+
+    while (i < len) {
+        if ((utf8[i] == '\033' || utf8[i] == '\x1b') && (i + 1 < len && utf8[i + 1] == '[')) {
+            i += 2; // skip \033[
+            std::string params_str;
+            while (i < len && utf8[i] != 'm' && !std::isalpha((unsigned char)utf8[i])) {
+                params_str += utf8[i];
+                i++;
+            }
+            char command = (i < len) ? utf8[i] : '\0';
+            if (i < len) i++; // skip command char 'm'
+
+            if (command == 'm') {
+                std::vector<int> params;
+                std::stringstream ss(params_str);
+                std::string token;
+                while (std::getline(ss, token, ';')) {
+                    if (!token.empty()) params.push_back(std::atoi(token.c_str()));
+                    else params.push_back(0);
+                }
+                if (params.empty()) params.push_back(0);
+
+                for (size_t p = 0; p < params.size(); ++p) {
+                    int code = params[p];
+                    if (code == 0) {
+                        current_style = 'A';
+                    } else if (code >= 30 && code <= 37) {
+                        current_style = (char)('E' + (code - 30));
+                    } else if (code >= 90 && code <= 97) {
+                        current_style = (char)('E' + 8 + (code - 90));
+                    } else if (code == 38 && p + 2 < params.size() && params[p + 1] == 5) {
+                        int color_idx = params[p + 2];
+                        if (color_idx >= 0 && color_idx <= 255) {
+                            current_style = (char)('E' + color_idx);
+                        }
+                        p += 2;
+                    }
+                }
+            }
+        } else {
+            clean_text += utf8[i];
+            style_bytes += current_style;
+            i++;
+        }
+    }
+
+    if (!clean_text.empty()) {
+        const int start = buffer_->length();
+        int pos = buffer_->length();
+        buffer_->insert(pos, clean_text.c_str());
+        style_->replace(pos, pos + (int)clean_text.size(), style_bytes.c_str());
+        styleOutputUrls(start, buffer_->length());
+        insert_position(buffer_->length());
+        show_insert_position();
+    }
 }
 
 void TerminalView::styleOutputUrls(int start, int end) {
