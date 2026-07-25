@@ -178,6 +178,27 @@ panel_win_t *panel_registry_load(const char *name, const char *path); /* loads/r
 panel_win_t *panel_registry_load_params(const char *name, const char *path, const char *params);
 panel_win_t *panel_registry_get(const char *name);                     /* NULL if not loaded */
 int panel_registry_reload(const char *name);                           /* reload from the path/params used at load */
+/* Live Control Inspection & Update API for running panel instances.
+ * `control_name` matches the widget name from the DSL.
+ * `val_str` can be numeric ("5000"), toggle ("1"/"0"/"on"/"off"), or choice option ("saw").
+ * If `fire_command` is non-zero, the control's command template is also dispatched.
+ * Returns 0 on success (control found and updated), -1 if control not found. */
+int panel_set_value(panel_win_t *pw, const char *control_name, const char *val_str, int fire_command);
+int panel_set_value_num(panel_win_t *pw, const char *control_name, double num_val, int fire_command);
+int panel_get_value(panel_win_t *pw, const char *control_name, char *buf, size_t buf_sz);
+
+/* Enumerate all interactive controls and current live values on a panel instance. */
+typedef void (*panel_value_enum_fn)(const char *control_name, const char *val_str, void *user_data);
+int panel_enum_values(panel_win_t *pw, panel_value_enum_fn fn, void *user_data);
+
+/* Registry convenience wrappers for named panel instances */
+int panel_registry_set_value(const char *panel_name, const char *control_name, const char *val_str, int fire_command);
+int panel_registry_get_value(const char *panel_name, const char *control_name, char *buf, size_t buf_sz);
+int panel_registry_enum_values(const char *panel_name, panel_value_enum_fn fn, void *user_data);
+
+typedef void (*panel_registry_list_fn)(const char *name, const char *path, const char *params, int is_shown, void *user_data);
+void panel_registry_list(panel_registry_list_fn fn, void *user_data);
+
 void panel_registry_show(const char *name);
 void panel_registry_hide(const char *name);
 void panel_registry_destroy(const char *name);

@@ -133,9 +133,13 @@ bitmap [show|hide|clear]
 spectrogram wave <slot> | record [-1|0|1]
 waveform wave <slot> | record [-1|0|1]
 topology <voice> [depth]
-panel load <file.pnl>
-panel reload
-panel hide
+panel load <name> <file.pnl> [key=val ...]
+panel list | ls
+panel get <name> [control]
+panel dump | values <name>
+panel set <name> <control> <value> [fire=0|1]
+panel reload <name>
+panel show <name> | hide <name>
 boot [voices N] [frames N] [port N]
 quit
 exit
@@ -212,19 +216,18 @@ foreign-function data call, skrepl obtains wavetable loop boundaries with
 transfers are already trimmed, so their original `W-` start/end bounds are not
 misrepresented as loops over the returned data.
 
-Load the included panel example from the repository root with:
+Load and manage named panel instances with parameters, inspection, and live controls:
 
 ```text
-panel load controls.pnl
+panel load demo demo.pnl voice=1 track=2
+panel list
+panel get demo note
+panel set demo note 72 1
+panel dump demo
+panel reload demo
 ```
 
-The panel DSL supports sliders, numeric fields, toggles, buttons, choices,
-labels, and weighted rows. Widget templates substitute `%d`, `%f`, or `%s`
-and send the resulting command to Skred. `panel reload` reparses the last
-loaded path while preserving the panel window. Parse failures are reported to
-stderr. See [`include/repl/panel_dsl.h`](include/repl/panel_dsl.h) for the DSL
-grammar and [`include/repl/bitmap_win.h`](include/repl/bitmap_win.h) for the
-bitmap API.
+The panel DSL supports sliders, numeric fields, toggles, buttons (including sequential grid shortcuts `1`..`8`), choices, labels, button grids, and weighted rows. Widget templates substitute `%d`, `%f`, or `%s` and send the resulting command to Skred. Running instances can be listed (`panel list`), inspected (`panel get <name> [control]`, `panel dump <name>`), and updated live dynamically (`panel set <name> <control> <value> [fire=0|1]`). `panel reload` reparses the DSL path and parameter values while restoring widget positions. Parse failures are reported to stderr. See [`include/repl/panel_dsl.h`](include/repl/panel_dsl.h) for the full DSL grammar and C API.
 
 All bitmap and panel API calls must run on the FLTK main thread.
 

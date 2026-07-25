@@ -668,7 +668,7 @@ public:
         name_ = name;
         unit_ = unit;
         display_tmpl_ = display_tmpl;
-        update_display();
+        update_label_display();
     }
 
     /* Sets the value and refreshes the label, without dispatching a
@@ -679,7 +679,15 @@ public:
         if (v < minimum()) v = minimum();
         if (v > maximum()) v = maximum();
         value(v);
-        update_display();
+        update_label_display();
+    }
+
+    void update_label_display() {
+        if (!label_box_) return;
+        std::string valstr = format_display_value(display_tmpl_, value());
+        std::string full = name_ + " (" + valstr + (unit_.empty() ? "" : " " + unit_) + ")";
+        label_box_->copy_label(full.c_str());
+        label_box_->redraw();
     }
 
 protected:
@@ -711,7 +719,7 @@ protected:
                 }
                 if (dragging_) {
                     int r = Fl_Slider::handle(FL_DRAG);
-                    update_display();
+                    update_label_display();
                     if (live_ && binding_) {
                         long t = now_ms();
                         if (t - last_ms_ >= LIVE_THROTTLE_MS) {
@@ -727,7 +735,7 @@ protected:
                 paging_ = false;
                 if (dragging_) {
                     int r = Fl_Slider::handle(FL_RELEASE);
-                    update_display();
+                    update_label_display();
                     if (binding_) dispatch(format_template_float(binding_->tmpl, value()));
                     return r;
                 }
@@ -743,7 +751,7 @@ protected:
                 if (nv < minimum()) nv = minimum();
                 if (nv > maximum()) nv = maximum();
                 value(nv);
-                update_display();
+                update_label_display();
                 if (binding_) dispatch(format_template_float(binding_->tmpl, nv));
                 return 1;
             }
@@ -751,7 +759,7 @@ protected:
         }
 
         int r = Fl_Slider::handle(event);
-        if (event == FL_DRAG || event == FL_RELEASE) update_display();
+        if (event == FL_DRAG || event == FL_RELEASE) update_label_display();
         if (!binding_) return r;
         if (event == FL_RELEASE) {
             dispatch(format_template_float(binding_->tmpl, value()));
@@ -776,13 +784,6 @@ protected:
     }
 
 private:
-    void update_display() {
-        if (!label_box_) return;
-        std::string valstr = format_display_value(display_tmpl_, value());
-        std::string full = name_ + " (" + valstr + (unit_.empty() ? "" : " " + unit_) + ")";
-        label_box_->copy_label(full.c_str());
-        label_box_->redraw();
-    }
 
     ItemBinding *binding_;
     bool live_;
@@ -1146,10 +1147,6 @@ struct LayoutBlock {
 };
 
 } // namespace
-
-/* ---------------------------------------------------------------------
- * panel_win: opaque handle
- * ------------------------------------------------------------------- */
 
 struct panel_win {
     Fl_Double_Window *win;
@@ -1669,6 +1666,33 @@ void restore_values(Fl_Group *g, const ReloadSnapshot &snap) {
     }
 }
 
+static Fl_Widget* find_control_by_name(Fl_Group *g, const std::string &name) {
+    if (!g) return nullptr;
+    for (int i = 0; i < g->children(); ++i) {
+        Fl_Widget *w = g->child(i);
+        if (LiveSlider *s = dynamic_cast<LiveSlider*>(w)) {
+            if (s->name() == name) return s;
+        } else if (Fl_Int_Input *f = dynamic_cast<Fl_Int_Input*>(w)) {
+            ItemBinding *b = (ItemBinding*)f->user_data();
+            if (b && b->name == name) return f;
+        } else if (Fl_Check_Button *c = dynamic_cast<Fl_Check_Button*>(w)) {
+            ItemBinding *b = (ItemBinding*)c->user_data();
+            if (b && b->name == name) return c;
+        } else if (Fl_Choice *ch = dynamic_cast<Fl_Choice*>(w)) {
+            ItemBinding *b = (ItemBinding*)ch->user_data();
+            if (b && b->name == name) return ch;
+        } else if (ModalButton *mb = dynamic_cast<ModalButton*>(w)) {
+            ItemBinding *b = (ItemBinding*)mb->user_data();
+            if (b && b->name == name) return mb;
+        }
+        if (Fl_Group *sub = dynamic_cast<Fl_Group*>(w)) {
+            Fl_Widget *found = find_control_by_name(sub, name);
+            if (found) return found;
+        }
+    }
+    return nullptr;
+}
+
 } // namespace
 
 /* ---------------------------------------------------------------------
@@ -1806,19 +1830,151 @@ void panel_destroy(panel_win_t *pw) {
     delete pw;
 }
 
+int panel_set_value(panel_win_t *pw, const char *control_name, const char *val_str, int fire_command) {
+    if (!pw || !pw->content || !control_name || !val_str) return -1;
+    Fl_Widget *w = find_control_by_name(pw->content, control_name);
+    if (!w) return -1;
+
+    if (LiveSlider *s = dynamic_cast<LiveSlider*>(w)) {
+        double nv = atof(val_str);
+        if (nv < s->minimum()) nv = s->minimum();
+        if (nv > s->maximum()) nv = s->maximum();
+        s->value(nv);
+        s->update_label_display();
+        s->redraw();
+        ItemBinding *b = (ItemBinding*)s->user_data();
+        if (fire_command && b && !b->tmpl.empty()) {
+            dispatch(format_template_float(b->tmpl, nv));
+        }
+        return 0;
+    } else if (Fl_Int_Input *f = dynamic_cast<Fl_Int_Input*>(w)) {
+        f->value(val_str);
+        f->redraw();
+        ItemBinding *b = (ItemBinding*)f->user_data();
+        if (fire_command && b && !b->tmpl.empty()) {
+            dispatch(format_template_int(b->tmpl, atol(val_str)));
+        }
+        return 0;
+    } else if (Fl_Check_Button *c = dynamic_cast<Fl_Check_Button*>(w)) {
+        int nv = (strcmp(val_str, "1") == 0 || strcasecmp(val_str, "on") == 0 || strcasecmp(val_str, "true") == 0) ? 1 : 0;
+        c->value(nv);
+        c->redraw();
+        ItemBinding *b = (ItemBinding*)c->user_data();
+        if (fire_command && b && !b->tmpl.empty()) {
+            dispatch(format_template_int(b->tmpl, nv));
+        }
+        return 0;
+    } else if (Fl_Choice *ch = dynamic_cast<Fl_Choice*>(w)) {
+        int matched = -1;
+        for (int i = 0; i < ch->size() - 1; ++i) {
+            if (ch->text(i) && strcasecmp(ch->text(i), val_str) == 0) {
+                matched = i; break;
+            }
+        }
+        if (matched < 0 && isdigit((unsigned char)val_str[0])) {
+            matched = atoi(val_str);
+            if (matched < 0 || matched >= ch->size() - 1) matched = -1;
+        }
+        if (matched >= 0) {
+            ch->value(matched);
+            ch->redraw();
+            ItemBinding *b = (ItemBinding*)ch->user_data();
+            if (fire_command && b && !b->tmpl.empty() && ch->text()) {
+                dispatch(format_template_str(b->tmpl, ch->text()));
+            }
+            return 0;
+        }
+        return -1;
+    } else if (ModalButton *mb = dynamic_cast<ModalButton*>(w)) {
+        if (fire_command) {
+            mb->trigger_press();
+            mb->trigger_release();
+        }
+        return 0;
+    }
+    return -1;
+}
+
+int panel_set_value_num(panel_win_t *pw, const char *control_name, double num_val, int fire_command) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%.6g", num_val);
+    return panel_set_value(pw, control_name, buf, fire_command);
+}
+
+int panel_get_value(panel_win_t *pw, const char *control_name, char *buf, size_t buf_sz) {
+    if (!pw || !pw->content || !control_name || !buf || buf_sz == 0) return -1;
+    buf[0] = '\0';
+    Fl_Widget *w = find_control_by_name(pw->content, control_name);
+    if (!w) return -1;
+
+    if (LiveSlider *s = dynamic_cast<LiveSlider*>(w)) {
+        snprintf(buf, buf_sz, "%.6g", s->value());
+        return 0;
+    } else if (Fl_Int_Input *f = dynamic_cast<Fl_Int_Input*>(w)) {
+        snprintf(buf, buf_sz, "%s", f->value() ? f->value() : "");
+        return 0;
+    } else if (Fl_Check_Button *c = dynamic_cast<Fl_Check_Button*>(w)) {
+        snprintf(buf, buf_sz, "%d", c->value() ? 1 : 0);
+        return 0;
+    } else if (Fl_Choice *ch = dynamic_cast<Fl_Choice*>(w)) {
+        snprintf(buf, buf_sz, "%s", ch->text() ? ch->text() : "");
+        return 0;
+    } else if (ModalButton *mb = dynamic_cast<ModalButton*>(w)) {
+        snprintf(buf, buf_sz, "%d", mb->value() ? 1 : 0);
+        return 0;
+    }
+    return -1;
+}
+
+static void enum_controls_recursive(Fl_Group *g, panel_value_enum_fn fn, void *user_data) {
+    if (!g || !fn) return;
+    for (int i = 0; i < g->children(); ++i) {
+        Fl_Widget *w = g->child(i);
+        char buf[128] = {0};
+        if (LiveSlider *s = dynamic_cast<LiveSlider*>(w)) {
+            snprintf(buf, sizeof(buf), "%.6g", s->value());
+            fn(s->name().c_str(), buf, user_data);
+        } else if (Fl_Int_Input *f = dynamic_cast<Fl_Int_Input*>(w)) {
+            ItemBinding *b = (ItemBinding*)f->user_data();
+            if (b && !b->name.empty()) {
+                snprintf(buf, sizeof(buf), "%s", f->value() ? f->value() : "");
+                fn(b->name.c_str(), buf, user_data);
+            }
+        } else if (Fl_Check_Button *c = dynamic_cast<Fl_Check_Button*>(w)) {
+            ItemBinding *b = (ItemBinding*)c->user_data();
+            if (b && !b->name.empty()) {
+                snprintf(buf, sizeof(buf), "%d", c->value() ? 1 : 0);
+                fn(b->name.c_str(), buf, user_data);
+            }
+        } else if (Fl_Choice *ch = dynamic_cast<Fl_Choice*>(w)) {
+            ItemBinding *b = (ItemBinding*)ch->user_data();
+            if (b && !b->name.empty()) {
+                snprintf(buf, sizeof(buf), "%s", ch->text() ? ch->text() : "");
+                fn(b->name.c_str(), buf, user_data);
+            }
+        } else if (ModalButton *mb = dynamic_cast<ModalButton*>(w)) {
+            ItemBinding *b = (ItemBinding*)mb->user_data();
+            if (b && !b->name.empty()) {
+                snprintf(buf, sizeof(buf), "%d", mb->value() ? 1 : 0);
+                fn(b->name.c_str(), buf, user_data);
+            }
+        }
+        if (Fl_Group *sub = dynamic_cast<Fl_Group*>(w)) {
+            enum_controls_recursive(sub, fn, user_data);
+        }
+    }
+}
+
+int panel_enum_values(panel_win_t *pw, panel_value_enum_fn fn, void *user_data) {
+    if (!pw || !pw->content || !fn) return -1;
+    enum_controls_recursive(pw->content, fn, user_data);
+    return 0;
+}
+
 } // extern "C"
 
 /* ---------------------------------------------------------------------
  * Named panel registry (optional convenience layer)
- *
- * The core API above is already fully multi-instance: every
- * panel_load_file()/panel_load_string() call returns an independent
- * panel_win_t with its own window and widget state, and there is no
- * hidden global limiting you to one panel. This registry is purely a
- * convenience for a caller (like a Skred fallback handler) that wants
- * to manage several named panels -- "envelope", "pads", "mixer" -- via
- * simple commands like `panel load pads pads.pnl` / `panel reload pads`
- * without hand-rolling its own name -> panel_win_t map.
  * ------------------------------------------------------------------- */
 
 namespace {
@@ -1891,6 +2047,32 @@ void panel_registry_show(const char *name) {
 void panel_registry_hide(const char *name) {
     panel_win_t *pw = panel_registry_get(name);
     if (pw) panel_hide(pw);
+}
+
+int panel_registry_set_value(const char *panel_name, const char *control_name, const char *val_str, int fire_command) {
+    panel_win_t *pw = panel_registry_get(panel_name);
+    if (!pw) return -1;
+    return panel_set_value(pw, control_name, val_str, fire_command);
+}
+
+int panel_registry_get_value(const char *panel_name, const char *control_name, char *buf, size_t buf_sz) {
+    panel_win_t *pw = panel_registry_get(panel_name);
+    if (!pw) return -1;
+    return panel_get_value(pw, control_name, buf, buf_sz);
+}
+
+int panel_registry_enum_values(const char *panel_name, panel_value_enum_fn fn, void *user_data) {
+    panel_win_t *pw = panel_registry_get(panel_name);
+    if (!pw) return -1;
+    return panel_enum_values(pw, fn, user_data);
+}
+
+void panel_registry_list(panel_registry_list_fn fn, void *user_data) {
+    if (!fn) return;
+    for (std::map<std::string, RegistryEntry>::const_iterator it = g_registry.begin(); it != g_registry.end(); ++it) {
+        int is_shown = (it->second.pw && it->second.pw->win && it->second.pw->win->shown()) ? 1 : 0;
+        fn(it->first.c_str(), it->second.path.c_str(), it->second.params.c_str(), is_shown, user_data);
+    }
 }
 
 void panel_registry_destroy(const char *name) {

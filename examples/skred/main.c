@@ -154,8 +154,21 @@ static void skred_line(const char *line, void *userdata) {
     free(command);
 
     print_skred_log(app);
-    if (result > 0) repl_printf(app->repl, "r = %d\n", result);
     if (result < 0) repl_quit(app->repl);
+}
+
+static void print_panel_list_cb(const char *name, const char *path, const char *params, int is_shown, void *user_data) {
+    app_state *app = (app_state *)user_data;
+    if (params && params[0]) {
+        repl_printf(app->repl, "  '%s' -> %s (%s, %s)\n", name, path, params, is_shown ? "visible" : "hidden");
+    } else {
+        repl_printf(app->repl, "  '%s' -> %s (%s)\n", name, path, is_shown ? "visible" : "hidden");
+    }
+}
+
+static void print_panel_control_cb(const char *control_name, const char *val_str, void *user_data) {
+    app_state *app = (app_state *)user_data;
+    repl_printf(app->repl, "  %s = %s\n", control_name, val_str);
 }
 
 static void bitmap_panel_handler(const char *line, void *userdata) {
@@ -350,9 +363,57 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
             }
             return;
         }
+        if (n2 >= 2 && strcmp(pname, "set") == 0) {
+            char panel_name[64] = {0}, ctrl_name[64] = {0}, val_str[128] = {0};
+            int fire_cmd = 0;
+            int n3 = sscanf(rest, "%63s %63s %127s %d", panel_name, ctrl_name, val_str, &fire_cmd);
+            if (n3 >= 3) {
+                if (panel_registry_set_value(panel_name, ctrl_name, val_str, fire_cmd) == 0) {
+                    repl_printf(app->repl, "Updated %s.%s = %s\n", panel_name, ctrl_name, val_str);
+                } else {
+                    repl_printf(app->repl, "Failed to set %s.%s (panel or control not found).\n", panel_name, ctrl_name);
+                }
+            } else {
+                repl_println(app->repl, "usage: panel set <panel_name> <control_name> <value> [fire=0|1]");
+            }
+            return;
+        }
+        if (n2 >= 1 && (strcmp(pname, "list") == 0 || strcmp(pname, "ls") == 0)) {
+            repl_println(app->repl, "Active Panels:");
+            panel_registry_list(print_panel_list_cb, app);
+            return;
+        }
+        if (n2 >= 2 && (strcmp(pname, "dump") == 0 || strcmp(pname, "values") == 0)) {
+            char panel_name[64] = {0};
+            sscanf(rest, "%63s", panel_name);
+            repl_printf(app->repl, "Controls & Values for '%s':\n", panel_name);
+            if (panel_registry_enum_values(panel_name, print_panel_control_cb, app) != 0) {
+                repl_printf(app->repl, "Panel '%s' not found.\n", panel_name);
+            }
+            return;
+        }
+        if (n2 >= 2 && strcmp(pname, "get") == 0) {
+            char panel_name[64] = {0}, ctrl_name[64] = {0}, buf[128] = {0};
+            int n3 = sscanf(rest, "%63s %63s", panel_name, ctrl_name);
+            if (n3 == 2) {
+                if (panel_registry_get_value(panel_name, ctrl_name, buf, sizeof(buf)) == 0) {
+                    repl_printf(app->repl, "%s.%s = %s\n", panel_name, ctrl_name, buf);
+                } else {
+                    repl_printf(app->repl, "Control %s.%s not found.\n", panel_name, ctrl_name);
+                }
+            } else if (n3 == 1) {
+                repl_printf(app->repl, "Controls & Values for '%s':\n", panel_name);
+                if (panel_registry_enum_values(panel_name, print_panel_control_cb, app) != 0) {
+                    repl_printf(app->repl, "Panel '%s' not found.\n", panel_name);
+                }
+            } else {
+                repl_println(app->repl, "usage: panel get <panel_name> [control_name]");
+            }
+            return;
+        }
         if (n2 >= 2 && strcmp(pname, "show") == 0) { panel_registry_show(rest); return; }
         if (n2 >= 2 && strcmp(pname, "hide") == 0) { panel_registry_hide(rest); return; }
-        repl_println(app->repl, "usage: panel load <name> <file.pnl> [key=value ...] | open [name] | reload <name> | show <name> | hide <name>");
+        repl_println(app->repl, "usage: panel load <name> <file.pnl> [key=val ...] | list | dump <name> | set <name> <ctrl> <val> [fire] | get <name> [ctrl] | reload <name> | show <name> | hide <name>");
         return;
     }
 
