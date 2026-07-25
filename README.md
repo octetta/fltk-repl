@@ -20,7 +20,7 @@ window and a small DSL for building Skred control panels.
 skrepl is built with these open-source projects:
 
 - [FLTK](https://www.fltk.org/) 1.4.5 provides the cross-platform GUI and SVG rendering.
-- [miniaudio](https://miniaud.io/) 0.11.25 provides audio I/O through the linked Skred 0.52.0 library.
+- [miniaudio](https://miniaud.io/) 0.11.25 provides audio I/O through the linked Skred 0.53.0 library.
 - [Pikchr](https://pikchr.org/) 1.0.0 renders voice-topology diagrams from its vendored generated C source.
 
 Project and Octetta pages:
@@ -65,11 +65,11 @@ make clean    # remove build/
 ```
 
 CMake downloads the selected maxed Skred release from the PULP GitHub
-releases into `vendor/`. Version 0.52.0 is the default; select another
+releases into `vendor/`. Version 0.53.0 is the default; select another
 published version at configure time with:
 
 ```sh
-cmake -S . -B build -DSKRED_VERSION=0.52.0
+cmake -S . -B build -DSKRED_VERSION=0.53.0
 ```
 
 The current CMake implementation derives the package location from
@@ -174,7 +174,7 @@ frequency values. Waveform calls may also supply loop start/end frame indices,
 using `-1` when a marker is unavailable. Sample buffers are copied or consumed
 synchronously and remain owned by the caller.
 
-Skred 0.52.0 supplies parser data to host foreign-function callbacks. The REPL
+Skred 0.53.0 supplies parser data to host foreign-function callbacks. The REPL
 uses reserved slot `/ff9` to copy that data and marshal rendering onto FLTK's
 main thread. Display a wavetable or the completed temporary record buffer with:
 
@@ -210,7 +210,7 @@ waveform record 1
 Waveform labels sit outside the plot and report the frame count and stored
 amplitude range, peak-to-peak level, RMS, peak dBFS, DC offset, crest factor,
 and zero-crossing rate. Available loop markers also report their frame range,
-duration, and position. Although Skred 0.52.0 does not attach metadata to its
+duration, and position. Although Skred 0.53.0 does not attach metadata to its
 foreign-function data call, skrepl obtains wavetable loop boundaries with
 `W* wave,3` and `W* wave,4` before transferring the samples. Record-buffer
 transfers are already trimmed, so their original `W-` start/end bounds are not

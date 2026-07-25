@@ -9,14 +9,15 @@ slider modulation 0 31 1 "DL ${track} - - - %d - -" =0 ~live
 slider depth      0 31 1 "DL ${track} - - - - %d -" =0 ~live
 slider amount     0 15 1 "DL ${track} - - - - - %d" =0 ~live
 
-grid 1 4
-  button a4 "v0n69l1" "v0l0"
-  button b4 "v0n70l1" "v0l0"
-  button start "y0z1"
-  button stop  "y0z0"
+grid 1 2
+  button a4 "v${voice}n69l1" "v${voice}l0"
+  button b4 "v${voice}n70l1" "v${voice}l0"
 endgrid
 
 grid 1 2
-  button kick "v10 l1"
-  button snare "v11 l1"
+  button start "Z1"
+  button stop "Z0"
 endgrid
+
+slider bend-freq -1 1 0.1 "v${voice} fb%f" =0 ~live
+slider bend-amp  -1 1 0.1 "v${voice} ab%f" =0 ~live

@@ -86,7 +86,7 @@ endif()
 # Download Skred release into vendor/
 # ---------------------------------------------------------------------
 option(SKRED_BUILD_REPL "Build Skred REPL" ON)
-set(SKRED_VERSION "0.52.2" CACHE STRING "Skred version to use")
+set(SKRED_VERSION "0.53.0" CACHE STRING "Skred version to use")
 set(SKRED_ROOT "" CACHE PATH "Path to skred package (auto-filled)")
 
 set(VENDOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor")
