@@ -56,8 +56,11 @@ add_library(replfltk
     src/VoiceTopology.cpp src/VoiceTopology.h
     src/bitmap_win.cpp src/panel_dsl.cpp
     src/foreign_bridge.cpp src/EditorWindow.cpp src/EditorWindow.h
+    src/UdpBridge.cpp src/UdpBridge.h
+    src/FontPickerWindow.cpp src/FontPickerWindow.h
     include/repl/bitmap_win.h include/repl/panel_dsl.h
     include/repl/foreign_bridge.h include/repl/editor_win.h
+    include/repl/udp_bridge.h include/repl/font_picker.h
     src/repl_prefs.cpp
 )
 
@@ -251,6 +254,16 @@ if(BUILD_TESTING)
     target_include_directories(repl_panel_spring_test PRIVATE src include)
     target_link_libraries(repl_panel_spring_test PRIVATE replfltk)
     add_test(NAME repl_panel_spring_test COMMAND repl_panel_spring_test)
+
+    add_executable(repl_udp_test tests/udp_test.cpp)
+    target_include_directories(repl_udp_test PRIVATE src include)
+    target_link_libraries(repl_udp_test PRIVATE replfltk)
+    add_test(NAME repl_udp_test COMMAND repl_udp_test)
+
+    add_executable(repl_font_picker_test tests/font_picker_test.cpp)
+    target_include_directories(repl_font_picker_test PRIVATE src include)
+    target_link_libraries(repl_font_picker_test PRIVATE replfltk)
+    add_test(NAME repl_font_picker_test COMMAND repl_font_picker_test)
 endif()
 
 message(STATUS "fltk-repl configured successfully!")

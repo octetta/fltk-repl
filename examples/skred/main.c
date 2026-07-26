@@ -648,28 +648,71 @@ static void cmd_boot(int argc, char **argv, void *userdata) {
 
 static void gui_help(int argc, char **argv, void *userdata) {
     app_state *app = (app_state *)userdata;
-    (void)argc; (void)argv;
+    if (argc >= 2) {
+        const char *topic = argv[1];
+        if (!strcmp(topic, "edit") || !strcmp(topic, "editor")) {
+            repl_println(app->repl,
+                "Usage: edit [filepath]\n"
+                "  Opens the built-in desktop script text editor window.\n"
+                "  Features line numbers, Open/Save file dialogs, dark/light themes, and\n"
+                "  one-click or Ctrl+Enter / Cmd+Enter execution into the REPL session.");
+            return;
+        }
+        if (!strcmp(topic, "udp")) {
+            repl_println(app->repl,
+                "Usage: udp connect <host> <port> | send <text> | mode forward|log|off | color <1..255> | status | disconnect\n"
+                "  Attach to external programs or remote instances via UDP.\n"
+                "  Incoming UDP responses are displayed in custom ANSI 256 color (default 51 = cyan).");
+            return;
+        }
+        if (!strcmp(topic, "panel")) {
+            repl_println(app->repl,
+                "Usage: panel load <name> <file.pnl> [key=val ...] | list | get <name> [ctrl] | set <name> <ctrl> <val> [fire=0|1] | dump <name> | reload <name> | show <name> | hide <name>\n"
+                "  Manage interactive GUI parameter panels built with the panel DSL.\n"
+                "  Sliders support continuous/stepped ranges, ~live drag updates, and ~spring return-to-default.");
+            return;
+        }
+        if (!strcmp(topic, "spectrogram")) {
+            repl_println(app->repl,
+                "Usage: spectrogram wave <slot> | record [-1|0|1] | scale [linear|log] | cmap [magma|viridis|crt|amber|gray]\n"
+                "  Renders floating-point audio spectrograms with spectral peak, centroid, bandwidth, and flatness analysis.");
+            return;
+        }
+        if (!strcmp(topic, "waveform")) {
+            repl_println(app->repl,
+                "Usage: waveform wave <slot> | record [-1|0|1] | trigger [on|off]\n"
+                "  Renders oscilloscope waveforms with peak-to-peak, RMS, dBFS, crest factor, and zero-crossing analysis.");
+            return;
+        }
+        if (!strcmp(topic, "topology")) {
+            repl_println(app->repl,
+                "Usage: topology <voice> [depth]\n"
+                "  Renders interactive Pikchr voice topology link diagrams for Skred synthesis voices.");
+            return;
+        }
+    }
+
     repl_println(app->repl,
-        "GUI commands:\n"
-        "  clear                    clear scrollback\n"
-        "  theme light|dark         change colors\n"
-        "  font \"name\" [size]       change terminal font\n"
-        "  pwd                      print working directory\n"
-        "  cd [path]                change working directory (interactive chooser if no path)\n"
-        "  browse [dir|file|panel]  open native file/folder chooser dialog\n"
-        "  bitmap [show|hide|clear] graphics output window\n"
-        "  spectrogram wave <slot> | record [-1|0|1]\n"
-        "  waveform wave <slot> | record [-1|0|1]\n"
-        "  topology <voice> [depth] show /vg voice topology\n"
-        "  panel load <name> <file.pnl> [key=value ...] | open [name] | reload <name> | show <name> | hide <name>\n"
-        "    e.g. panel load voice1 voice.pnl voice=1  (fills in ${voice} in voice.pnl)\n"
-        "  boot [voices N] [frames N] [port N]   restart Skred\n"
-        "  credits\n"
-        "  quit / exit              stop everything\n"
+        "GUI Commands:\n"
+        "  edit [filepath]                  open script text editor window (Ctrl+Enter to run)\n"
+        "  udp connect <host> <port>        attach/send commands via UDP (colored responses)\n"
+        "    udp send <text> | mode forward|log|off | color <1..255> | status | disconnect\n"
+        "  panel load <name> <file.pnl>     load and display interactive parameter GUI panel\n"
+        "    panel list | get | set | dump | reload | show | hide\n"
+        "  spectrogram wave|record|scale    render audio spectrogram with spectral metrics\n"
+        "  waveform wave|record|trigger     render oscilloscope waveform with audio metrics\n"
+        "  topology <voice> [depth]         render Pikchr voice topology diagram\n"
+        "  bitmap [show|hide|clear]         toggle standalone graphic output window\n"
+        "  theme light|dark|custom|save     switch or save interface color theme\n"
+        "  font [\"name\" [size]]             change or view terminal font\n"
+        "  cd [path] / pwd / browse         navigation & file chooser dialogs\n"
+        "  boot [voices N] [frames N]       restart Skred engine with parameters\n"
+        "  clear                            clear scrollback text\n"
+        "  credits                          display credits and project links\n"
+        "  quit / exit                      stop everything and exit\n"
         "\n"
-        "Every other line is sent to Skred.\n"
-        "Skode can also trigger GUI commands directly via /ff8, e.g.:\n"
-        "  [waveform wave 0] /ff8");
+        "Type 'help <command>' for topic help (e.g. 'help edit', 'help udp', 'help panel').\n"
+        "Every other line is sent directly to Skred.");
 }
 
 static void cmd_quit(int argc, char **argv, void *userdata) {

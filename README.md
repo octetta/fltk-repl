@@ -93,8 +93,9 @@ The following GUI commands are built in:
 help            - list registered commands
 clear           - clear scrollback text
 theme light|dark - switch interface color themes
-font            - report current font and list monospace fonts
+font            - open GUI font chooser dialog or set font [font ["name" [size]]]
 edit [file]     - open built-in script text editor (Ctrl+Enter to evaluate)
+udp             - attach/send via UDP [connect <host> <port> | send <text> | mode forward|log|off | color <1..255> | status | disconnect]
 bitmap          - control default graphic output window [show|hide|clear]
 spectrogram     - render spectrogram [wave <slot> | record [-1|0|1] | scale [linear|log] | cmap [magma|viridis|crt|amber|gray]]
 waveform        - render oscilloscope waveform [wave <slot> | record [-1|0|1] | trigger [on|off]]

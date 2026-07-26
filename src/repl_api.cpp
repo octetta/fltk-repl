@@ -1,6 +1,10 @@
 #include "repl/repl_api.h"
 #include "repl/editor_win.h"
+#include "repl/udp_bridge.h"
+#include "repl/font_picker.h"
 #include "EditorWindow.h"
+#include "FontPickerWindow.h"
+#include "UdpBridge.h"
 #include "TerminalView.h"
 #include "Theme.h"
 #include "Tokenize.h"
@@ -33,6 +37,7 @@ struct CommandEntry {
 struct repl_ctx {
     Fl_Double_Window *window = nullptr;
     TerminalView *term = nullptr;
+    UdpBridge *udp = nullptr;
     std::map<std::string, CommandEntry> commands;
     repl_line_fn fallback_fn = nullptr;
     void *fallback_userdata = nullptr;
@@ -64,6 +69,11 @@ static void dispatch_line(repl_ctx *ctx, const std::string &line) {
 
     auto it = ctx->commands.find(tokens[0]);
     if (it == ctx->commands.end()) {
+        if (ctx->udp && ctx->udp->isConnected() && ctx->udp->mode() == UdpBridge::MODE_FORWARD) {
+            ctx->udp->sendData(line.c_str(), line.size());
+            ctx->term->showPrompt();
+            return;
+        }
         if (ctx->fallback_fn) {
             ctx->fallback_fn(line.c_str(), ctx->fallback_userdata);
             ctx->term->showPrompt();
@@ -170,11 +180,40 @@ static bool font_looks_monospace(Fl_Font f, int size) {
 // default builtin commands
 // ---------------------------------------------------------------------
 
-static void cmd_help(int, char **, void *ud) {
+static void cmd_help(int argc, char **argv, void *ud) {
     repl_ctx *ctx = (repl_ctx *)ud;
+    if (!ctx) return;
+
+    if (argc >= 2) {
+        std::string topic = argv[1];
+        if (topic == "edit" || topic == "editor") {
+            repl_println(ctx,
+                "Usage: edit [filepath]\n"
+                "  Opens the built-in desktop script text editor window.\n"
+                "  Features line numbers, Open/Save file dialogs, dark/light themes, and\n"
+                "  one-click or Ctrl+Enter / Cmd+Enter execution into the REPL session.");
+            return;
+        }
+        if (topic == "udp") {
+            repl_println(ctx,
+                "Usage: udp connect <host> <port> | send <text> | mode forward|log|off | color <1..255> | status | disconnect\n"
+                "  Attach to external programs or remote instances via UDP.\n"
+                "  Incoming UDP responses are displayed in custom ANSI 256 color (default 51 = cyan).");
+            return;
+        }
+    }
+
     std::string out = "Commands:\n";
     for (auto &kv : ctx->commands) {
-        out += "  " + kv.first + "\n";
+        out += "  " + kv.first;
+        if (kv.first == "help") out += "                            - list available commands";
+        else if (kv.first == "clear") out += "                           - clear terminal scrollback";
+        else if (kv.first == "theme") out += "                           - switch or save color themes";
+        else if (kv.first == "font") out += "                            - view or change terminal font";
+        else if (kv.first == "edit" || kv.first == "editor") out += "                     - open script text editor window";
+        else if (kv.first == "udp") out += "                             - attach/send via UDP socket";
+        else if (kv.first == "quit" || kv.first == "exit") out += "                        - close session";
+        out += "\n";
     }
     repl_print(ctx, out.c_str());
 }
@@ -248,14 +287,19 @@ static void cmd_theme(int argc, char **argv, void *ud) {
 
 static void cmd_font(int argc, char **argv, void *ud) {
     repl_ctx *ctx = (repl_ctx *)ud;
-    if (argc < 2) {
-        repl_printf(ctx, "current font: %s %dpt\n", ctx->font_name.c_str(), ctx->font_size);
-        repl_println(ctx, "monospace fonts found:");
-        char buf[4096];
-        repl_list_fonts_filtered(ctx, buf, sizeof(buf), 1, kFontProbeSize);
-        repl_print(ctx, buf);
+    if (!ctx) return;
+
+    if (argc < 2 || strcmp(argv[1], "choose") == 0 || strcmp(argv[1], "picker") == 0 || strcmp(argv[1], "gui") == 0) {
+        FontPickerWindow *win = font_picker_get_or_create();
+        win->setColors(ctx->term->colors());
+        win->setInitialFont(ctx->font_name, ctx->font_size);
+        win->setApplyHandler([ctx](const std::string &fontName, int fontSize) {
+            repl_set_font(ctx, fontName.c_str(), fontSize);
+        });
+        win->show();
         return;
     }
+
     int size = ctx->font_size;
     if (argc >= 3) size = atoi(argv[2]);
     if (!repl_set_font(ctx, argv[1], size)) {
@@ -273,6 +317,7 @@ static void cmd_quit(int, char **, void *ud) {
 
 repl_ctx *repl_create(const char *title, int width, int height) {
     repl_ctx *ctx = new repl_ctx();
+    ctx->udp = new UdpBridge(ctx);
 
     repl_apply_global_scheme(true);
 
@@ -299,6 +344,7 @@ repl_ctx *repl_create(const char *title, int width, int height) {
 
 void repl_destroy(repl_ctx *ctx) {
     if (!ctx) return;
+    delete ctx->udp;
     delete ctx->window; // deletes child widgets (term) too
     delete ctx;
 }
@@ -399,6 +445,92 @@ static void cmd_edit(int argc, char **argv, void *ud) {
     win->show();
 }
 
+static void cmd_udp(int argc, char **argv, void *ud) {
+    repl_ctx *ctx = (repl_ctx *)ud;
+    if (!ctx || !ctx->udp) return;
+
+    if (argc < 2) {
+        repl_println(ctx, "usage: udp connect <host> <port> | send <text> | mode forward|log|off | color <1..255> | status | disconnect");
+        return;
+    }
+
+    if (strcmp(argv[1], "connect") == 0 || strcmp(argv[1], "attach") == 0) {
+        if (argc < 4) {
+            repl_println(ctx, "usage: udp connect <host> <port>");
+            return;
+        }
+        const char *host = argv[2];
+        int port = atoi(argv[3]);
+        if (ctx->udp->connectTarget(host, port)) {
+            repl_printf(ctx, "\x1b[38;5;%dm[UDP] Attached to %s:%d (bound local port %d)\x1b[0m\n",
+                        ctx->udp->color(), host, port, ctx->udp->localPort());
+        } else {
+            repl_printf(ctx, "failed to connect to UDP target %s:%d\n", host, port);
+        }
+    } else if (strcmp(argv[1], "send") == 0) {
+        if (argc < 3) {
+            repl_println(ctx, "usage: udp send <text>");
+            return;
+        }
+        if (!ctx->udp->isConnected()) {
+            repl_println(ctx, "udp: not connected to any target. Use 'udp connect <host> <port>' first.");
+            return;
+        }
+        std::string payload;
+        for (int i = 2; i < argc; ++i) {
+            payload += argv[i];
+            if (i + 1 < argc) payload += " ";
+        }
+        if (ctx->udp->sendData(payload.c_str(), payload.size())) {
+            repl_printf(ctx, "\x1b[38;5;242m[udp sent %zu bytes]\x1b[0m\n", payload.size());
+        } else {
+            repl_println(ctx, "udp: failed to send packet");
+        }
+    } else if (strcmp(argv[1], "color") == 0) {
+        if (argc < 3) {
+            repl_printf(ctx, "current UDP response ANSI color: %d\n", ctx->udp->color());
+            return;
+        }
+        int col = atoi(argv[2]);
+        if (col < 1) col = 1;
+        if (col > 255) col = 255;
+        ctx->udp->setColor(col);
+        repl_printf(ctx, "\x1b[38;5;%dmUDP response color set to ANSI code %d\x1b[0m\n", col, col);
+    } else if (strcmp(argv[1], "mode") == 0) {
+        if (argc < 3) {
+            const char *m = (ctx->udp->mode() == UdpBridge::MODE_FORWARD) ? "forward" :
+                            (ctx->udp->mode() == UdpBridge::MODE_LOG) ? "log" : "off";
+            repl_printf(ctx, "current UDP mode: %s\n", m);
+            return;
+        }
+        if (strcmp(argv[2], "forward") == 0) ctx->udp->setMode(UdpBridge::MODE_FORWARD);
+        else if (strcmp(argv[2], "log") == 0) ctx->udp->setMode(UdpBridge::MODE_LOG);
+        else if (strcmp(argv[2], "off") == 0) ctx->udp->setMode(UdpBridge::MODE_OFF);
+        else {
+            repl_println(ctx, "usage: udp mode forward|log|off");
+            return;
+        }
+        repl_printf(ctx, "UDP mode set to %s\n", argv[2]);
+    } else if (strcmp(argv[1], "status") == 0) {
+        if (ctx->udp->isConnected()) {
+            const char *m = (ctx->udp->mode() == UdpBridge::MODE_FORWARD) ? "forward" :
+                            (ctx->udp->mode() == UdpBridge::MODE_LOG) ? "log" : "off";
+            repl_printf(ctx, "UDP target: \x1b[38;5;%dm%s:%d\x1b[0m (local port %d, mode %s, color %d, sent %llu, recv %llu)\n",
+                        ctx->udp->color(), ctx->udp->targetHost().c_str(), ctx->udp->targetPort(),
+                        ctx->udp->localPort(), m, ctx->udp->color(),
+                        (unsigned long long)ctx->udp->packetsSent(),
+                        (unsigned long long)ctx->udp->packetsRecv());
+        } else {
+            repl_println(ctx, "UDP status: disconnected");
+        }
+    } else if (strcmp(argv[1], "disconnect") == 0) {
+        ctx->udp->disconnectTarget();
+        repl_println(ctx, "UDP disconnected.");
+    } else {
+        repl_println(ctx, "usage: udp connect <host> <port> | send <text> | mode forward|log|off | color <1..255> | status | disconnect");
+    }
+}
+
 void repl_register_default_commands(repl_ctx *ctx) {
     if (!ctx) return;
     repl_register_command(ctx, "help", cmd_help, ctx);
@@ -407,6 +539,7 @@ void repl_register_default_commands(repl_ctx *ctx) {
     repl_register_command(ctx, "font", cmd_font, ctx);
     repl_register_command(ctx, "edit", cmd_edit, ctx);
     repl_register_command(ctx, "editor", cmd_edit, ctx);
+    repl_register_command(ctx, "udp", cmd_udp, ctx);
     repl_register_command(ctx, "quit", cmd_quit, ctx);
     repl_register_command(ctx, "exit", cmd_quit, ctx);
 }
@@ -699,5 +832,70 @@ void repl_editor_set_eval_handler(editor_win *win, editor_eval_fn fn, void *user
         });
     } else {
         ((EditorWindow *)win)->setEvalHandler(nullptr);
+    }
+}
+
+// ---------------------------------------------------------------------
+// udp_bridge C API
+// ---------------------------------------------------------------------
+int repl_udp_connect(repl_ctx *ctx, const char *host, int port) {
+    if (!ctx || !ctx->udp || !host) return 0;
+    return ctx->udp->connectTarget(host, port) ? 1 : 0;
+}
+
+void repl_udp_disconnect(repl_ctx *ctx) {
+    if (ctx && ctx->udp) ctx->udp->disconnectTarget();
+}
+
+int repl_udp_send(repl_ctx *ctx, const char *data, size_t len) {
+    if (!ctx || !ctx->udp) return -1;
+    return ctx->udp->sendData(data, len) ? (int)len : -1;
+}
+
+void repl_udp_set_color(repl_ctx *ctx, int ansi_color_code) {
+    if (ctx && ctx->udp) ctx->udp->setColor(ansi_color_code);
+}
+
+void repl_udp_set_mode(repl_ctx *ctx, const char *mode) {
+    if (!ctx || !ctx->udp || !mode) return;
+    if (strcmp(mode, "forward") == 0) ctx->udp->setMode(UdpBridge::MODE_FORWARD);
+    else if (strcmp(mode, "log") == 0) ctx->udp->setMode(UdpBridge::MODE_LOG);
+    else if (strcmp(mode, "off") == 0) ctx->udp->setMode(UdpBridge::MODE_OFF);
+}
+
+int repl_udp_is_connected(repl_ctx *ctx) {
+    return (ctx && ctx->udp && ctx->udp->isConnected()) ? 1 : 0;
+}
+
+// ---------------------------------------------------------------------
+// font_picker C API
+// ---------------------------------------------------------------------
+font_picker_win *repl_font_picker_open(repl_ctx *ctx) {
+    FontPickerWindow *win = font_picker_get_or_create();
+    if (ctx) {
+        win->setColors(ctx->term->colors());
+        win->setInitialFont(ctx->font_name, ctx->font_size);
+        win->setApplyHandler([ctx](const std::string &fontName, int fontSize) {
+            repl_set_font(ctx, fontName.c_str(), fontSize);
+        });
+    }
+    win->show();
+    return (font_picker_win *)win;
+}
+
+void repl_font_picker_close(font_picker_win *win) {
+    if (win) {
+        ((FontPickerWindow *)win)->hide();
+    }
+}
+
+void repl_font_picker_set_handler(font_picker_win *win, font_picker_apply_fn fn, void *userdata) {
+    if (!win) return;
+    if (fn) {
+        ((FontPickerWindow *)win)->setApplyHandler([fn, userdata](const std::string &fontName, int fontSize) {
+            fn(fontName.c_str(), fontSize, userdata);
+        });
+    } else {
+        ((FontPickerWindow *)win)->setApplyHandler(nullptr);
     }
 }
