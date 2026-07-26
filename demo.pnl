@@ -19,5 +19,5 @@ grid 1 2
   button stop "Z0"
 endgrid
 
-slider bend-freq -1 1 0.1 "v${voice} fb%f" =0 ~live
-slider bend-amp  -1 1 0.1 "v${voice} ab%f" =0 ~live
+slider bend-freq -1 1  "v${voice} fb%f" =0 ~live ~spring
+slider bend-amp  -1 1  "v${voice} ab%f" =0 ~live ~spring

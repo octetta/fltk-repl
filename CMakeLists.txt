@@ -246,6 +246,11 @@ if(BUILD_TESTING)
     target_include_directories(repl_vector_font_test PRIVATE src)
     target_link_libraries(repl_vector_font_test PRIVATE replfltk)
     add_test(NAME repl_vector_font_test COMMAND repl_vector_font_test)
+
+    add_executable(repl_panel_spring_test tests/panel_spring_test.cpp)
+    target_include_directories(repl_panel_spring_test PRIVATE src include)
+    target_link_libraries(repl_panel_spring_test PRIVATE replfltk)
+    add_test(NAME repl_panel_spring_test COMMAND repl_panel_spring_test)
 endif()
 
 message(STATUS "fltk-repl configured successfully!")

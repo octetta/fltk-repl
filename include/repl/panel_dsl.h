@@ -77,6 +77,14 @@
  *
  *   slider cutoff 20 20000 Hz "filter_cutoff_set %d" ~live
  *
+ * SPRING-LOADED / RETURN-TO-DEFAULT SLIDERS
+ *
+ * Adding the `~spring` (or `~return`) flag makes the slider snap back to its
+ * `=default` value (or midpoint) immediately upon mouse release, dispatching
+ * the default value to the engine (ideal for pitch bending or momentary controls):
+ *
+ *   slider pitch -12 12 "pitch_bend %f" =0 ~spring ~live
+ *
  * MODAL BUTTONS
  *
  * `button name "template"` behaves as before: fires the template once,

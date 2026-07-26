@@ -102,6 +102,7 @@ struct ParsedItem {
     bool has_step = false;
     double step = 0;
     bool live = false;
+    bool spring = false;
 };
 
 struct ParsedRow {
@@ -385,6 +386,7 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
 
             for (size_t fi = 0; fi < flags.size(); ++fi) {
                 if (flags[fi] == "live") it.live = true;
+                else if (flags[fi] == "spring" || flags[fi] == "return" || flags[fi] == "spring_back" || flags[fi] == "revert") it.spring = true;
                 else { err = "line " + std::to_string(lineno) + ": unknown slider flag '~" + flags[fi] + "'"; return false; }
             }
 
@@ -660,6 +662,7 @@ public:
     }
 
     void set_binding(ItemBinding *b, bool live) { binding_ = b; live_ = live; }
+    void set_spring(bool spring, double default_val) { spring_ = spring; default_val_ = default_val; }
     const std::string &name() const { return name_; }
 
     void set_display(Fl_Box *label_box, const std::string &name,
@@ -735,6 +738,9 @@ protected:
                 paging_ = false;
                 if (dragging_) {
                     int r = Fl_Slider::handle(FL_RELEASE);
+                    if (spring_) {
+                        value(default_val_);
+                    }
                     update_label_display();
                     if (binding_) dispatch(format_template_float(binding_->tmpl, value()));
                     return r;
@@ -750,9 +756,13 @@ protected:
                 else if (press_x_ > thumb_px) nv += step();
                 if (nv < minimum()) nv = minimum();
                 if (nv > maximum()) nv = maximum();
-                value(nv);
+                if (spring_) {
+                    value(default_val_);
+                } else {
+                    value(nv);
+                }
                 update_label_display();
-                if (binding_) dispatch(format_template_float(binding_->tmpl, nv));
+                if (binding_) dispatch(format_template_float(binding_->tmpl, value()));
                 return 1;
             }
             return 1; /* swallow anything else mid-gesture */
@@ -762,6 +772,10 @@ protected:
         if (event == FL_DRAG || event == FL_RELEASE) update_label_display();
         if (!binding_) return r;
         if (event == FL_RELEASE) {
+            if (spring_) {
+                value(default_val_);
+                update_label_display();
+            }
             dispatch(format_template_float(binding_->tmpl, value()));
         } else if (live_ && event == FL_DRAG) {
             long t = now_ms();
@@ -787,6 +801,8 @@ private:
 
     ItemBinding *binding_;
     bool live_;
+    bool spring_ = false;
+    double default_val_ = 0.0;
     long last_ms_;
     Fl_Box *label_box_;
     std::string name_, unit_, display_tmpl_;
@@ -1496,8 +1512,10 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     s->selection_color(fl_rgb_color(0x0d, 0x6e, 0xfd)); // #0d6efd Primary Blue thumb/knob
                     s->bounds(it.min, it.max);
                     if (it.has_step) s->step(it.step);
-                    s->value(it.has_default ? it.default_num : (it.min + it.max) / 2.0);
+                    double def_val = it.has_default ? it.default_num : (it.min + it.max) / 2.0;
+                    s->value(def_val);
                     s->set_binding(bind, it.live);
+                    s->set_spring(it.spring, def_val);
                     s->user_data(bind);
                     s->set_display(lbl, it.name, it.unit, it.tmpl);
                     pw->content->add(lbl);
