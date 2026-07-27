@@ -89,6 +89,8 @@ struct ParsedItem {
     std::string unit;          /* slider only, optional */
     std::string tmpl;          /* command template (button: release template) */
     std::string tmpl_press;    /* button only: press-time template, empty = none */
+    std::string tmpl_off;      /* stepbutton only: off-state template */
+    bool is_stepbutton = false;
     std::vector<std::string> options; /* choice only */
     std::string text;          /* label only */
     int weight = 1;
@@ -97,6 +99,7 @@ struct ParsedItem {
     double default_num = 0;    /* slider / field */
     bool default_bool = false; /* toggle */
     std::string default_str;   /* choice */
+    int shortcut_digit = 0;    /* button shortcut 1..9 */
 
     /* Slider only. */
     bool has_step = false;
@@ -240,10 +243,11 @@ bool apply_params(std::string &text, const char *params_str, std::string &err) {
     return true;
 }
 
-void pop_modifiers(std::vector<Token> &toks, int &weight,
+void pop_modifiers(std::vector<Token> &toks, int &weight, int &explicit_shortcut,
                     bool &has_default, std::string &default_tok,
                     std::vector<std::string> *flags) {
     weight = 1;
+    explicit_shortcut = 0;
     has_default = false;
     default_tok.clear();
     if (flags) flags->clear();
@@ -253,6 +257,7 @@ void pop_modifiers(std::vector<Token> &toks, int &weight,
         if (last.text.size() > 1 && last.text[0] == '@') {
             int w = atoi(last.text.c_str() + 1);
             weight = w > 0 ? w : 1;
+            if (w >= 1 && w <= 9) explicit_shortcut = w;
             toks.pop_back();
             continue;
         }
@@ -294,8 +299,17 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
 
     while (std::getline(in, raw)) {
         ++lineno;
-        size_t hash = raw.find('#');
-        std::string line = (hash == std::string::npos) ? raw : raw.substr(0, hash);
+        // Strip comments (# outside of quoted strings)
+        std::string line;
+        bool in_quotes = false;
+        for (size_t i = 0; i < raw.size(); ++i) {
+            if (raw[i] == '"' && (i == 0 || raw[i-1] != '\\')) {
+                in_quotes = !in_quotes;
+            } else if (raw[i] == '#' && !in_quotes) {
+                break; // Real comment
+            }
+            line += raw[i];
+        }
         std::vector<Token> t = tokenize(line);
         if (t.empty()) continue;
 
@@ -356,8 +370,8 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
         } else if (kw == "slider") {
             if (t.size() < 5) { err = "line " + std::to_string(lineno) + ": slider needs name min max [step] [unit] \"template\""; return false; }
             std::vector<Token> rest(t.begin() + 1, t.end());
-            int weight; bool has_default; std::string default_tok; std::vector<std::string> flags;
-            pop_modifiers(rest, weight, has_default, default_tok, &flags);
+            int weight, dummy_sc; bool has_default; std::string default_tok; std::vector<std::string> flags;
+            pop_modifiers(rest, weight, dummy_sc, has_default, default_tok, &flags);
 
             if (rest.size() < 4) { err = "line " + std::to_string(lineno) + ": slider is missing its \"template\""; return false; }
 
@@ -404,8 +418,8 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
         } else if (kw == "field") {
             if (t.size() < 5) { err = "line " + std::to_string(lineno) + ": field needs name min max \"template\""; return false; }
             std::vector<Token> rest(t.begin() + 1, t.end());
-            int weight; bool has_default; std::string default_tok; std::vector<std::string> flags;
-            pop_modifiers(rest, weight, has_default, default_tok, &flags);
+            int weight, dummy_sc; bool has_default; std::string default_tok; std::vector<std::string> flags;
+            pop_modifiers(rest, weight, dummy_sc, has_default, default_tok, &flags);
             if (!flags.empty()) { err = "line " + std::to_string(lineno) + ": field does not support flag '~" + flags[0] + "'"; return false; }
             if (rest.size() != 4) { err = "line " + std::to_string(lineno) + ": field needs exactly name min max \"template\""; return false; }
 
@@ -430,8 +444,8 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
         } else if (kw == "toggle") {
             if (t.size() < 3) { err = "line " + std::to_string(lineno) + ": toggle needs name \"template\""; return false; }
             std::vector<Token> rest(t.begin() + 1, t.end());
-            int weight; bool has_default; std::string default_tok; std::vector<std::string> flags;
-            pop_modifiers(rest, weight, has_default, default_tok, &flags);
+            int weight, dummy_sc; bool has_default; std::string default_tok; std::vector<std::string> flags;
+            pop_modifiers(rest, weight, dummy_sc, has_default, default_tok, &flags);
             if (!flags.empty()) { err = "line " + std::to_string(lineno) + ": toggle does not support flag '~" + flags[0] + "'"; return false; }
             if (rest.size() != 2) { err = "line " + std::to_string(lineno) + ": toggle needs exactly name \"template\""; return false; }
 
@@ -453,8 +467,8 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
         } else if (kw == "button") {
             if (t.size() < 3) { err = "line " + std::to_string(lineno) + ": button needs name \"template\" or name \"press\" \"release\""; return false; }
             std::vector<Token> rest(t.begin() + 1, t.end());
-            int weight; bool has_default; std::string default_tok; std::vector<std::string> flags;
-            pop_modifiers(rest, weight, has_default, default_tok, &flags);
+            int weight, explicit_shortcut; bool has_default; std::string default_tok; std::vector<std::string> flags;
+            pop_modifiers(rest, weight, explicit_shortcut, has_default, default_tok, &flags);
             if (!flags.empty()) { err = "line " + std::to_string(lineno) + ": button does not support flag '~" + flags[0] + "'"; return false; }
             if (has_default) { err = "line " + std::to_string(lineno) + ": button does not take a default value"; return false; }
 
@@ -467,11 +481,17 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
             } else if (rest.size() == 3) {
                 it.tmpl_press = rest[1].text;
                 it.tmpl = rest[2].text;
+            } else if (rest.size() == 4) {
+                it.tmpl = rest[1].text;       // Normal (State 1)
+                it.tmpl_press = rest[2].text; // Accent (State 2)
+                it.tmpl_off = rest[3].text;   // Off (State 0)
+                it.is_stepbutton = true;
             } else {
-                err = "line " + std::to_string(lineno) + ": button needs name \"template\" or name \"press\" \"release\"";
+                err = "line " + std::to_string(lineno) + ": button needs name \"template\" or \"press\" \"release\" or \"norm\" \"accent\" \"off\"";
                 return false;
             }
             it.weight = weight;
+            it.shortcut_digit = in_grid ? 0 : explicit_shortcut;
 
             if (in_grid) current_grid.buttons.push_back(it);
             else emit_item(it);
@@ -479,8 +499,8 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
         } else if (kw == "choice") {
             if (t.size() < 4) { err = "line " + std::to_string(lineno) + ": choice needs name \"options\" \"template\""; return false; }
             std::vector<Token> rest(t.begin() + 1, t.end());
-            int weight; bool has_default; std::string default_tok; std::vector<std::string> flags;
-            pop_modifiers(rest, weight, has_default, default_tok, &flags);
+            int weight, dummy_sc; bool has_default; std::string default_tok; std::vector<std::string> flags;
+            pop_modifiers(rest, weight, dummy_sc, has_default, default_tok, &flags);
             if (!flags.empty()) { err = "line " + std::to_string(lineno) + ": choice does not support flag '~" + flags[0] + "'"; return false; }
             if (rest.size() != 3) { err = "line " + std::to_string(lineno) + ": choice needs exactly name \"options\" \"template\""; return false; }
 
@@ -508,8 +528,8 @@ bool parse_dsl(const std::string &text, ParsedWindow &pw, std::string &err) {
         } else if (kw == "label") {
             if (t.size() < 2) { err = "line " + std::to_string(lineno) + ": label needs \"text\""; return false; }
             std::vector<Token> rest(t.begin() + 1, t.end());
-            int weight; bool has_default; std::string default_tok; std::vector<std::string> flags;
-            pop_modifiers(rest, weight, has_default, default_tok, &flags);
+            int weight, dummy_sc; bool has_default; std::string default_tok; std::vector<std::string> flags;
+            pop_modifiers(rest, weight, dummy_sc, has_default, default_tok, &flags);
             if (!flags.empty()) { err = "line " + std::to_string(lineno) + ": label does not support flag '~" + flags[0] + "'"; return false; }
             if (has_default) { err = "line " + std::to_string(lineno) + ": label does not take a default value"; return false; }
 
@@ -631,6 +651,7 @@ struct ItemBinding {
     std::string name;        /* used to match widgets across a reload */
     std::string tmpl;
     std::string tmpl_press;
+    std::string tmpl_off;
     std::vector<std::string> options;
 };
 
@@ -835,7 +856,7 @@ public:
         Fl_Color line_col = repl_rgb_to_flcolor(theme.border);
 
         int text_w = 0, text_h = 0;
-        fl_font(FL_HELVETICA_BOLD, 13);
+        fl_font(FL_HELVETICA, 12);
 
         if (!clean_title_.empty()) {
             fl_measure(clean_title_.c_str(), text_w, text_h, 0);
@@ -860,18 +881,49 @@ private:
 class ModalButton : public Fl_Button {
 public:
     ModalButton(int x, int y, int w, int h)
-        : Fl_Button(x, y, w, h, ""), binding_(NULL), shortcut_digit_(0) {}
+        : Fl_Button(x, y, w, h, ""), binding_(NULL), shortcut_digit_(0),
+          step_highlight_(false), is_stepbutton_(false), step_state_(0) {}
 
     void set_binding(ItemBinding *b) { binding_ = b; }
+    void set_step_highlight(bool hl) { step_highlight_ = hl; redraw(); }
+    bool step_highlight() const { return step_highlight_; }
+
+    void set_is_stepbutton(bool sb) { is_stepbutton_ = sb; }
+    bool is_stepbutton() const { return is_stepbutton_; }
+
+    void set_step_state(int st, bool fire_cmd = false) {
+        step_state_ = (st % 3);
+        if (step_state_ < 0) step_state_ += 3;
+        value(0);
+        redraw();
+        if (fire_cmd && binding_) {
+            if (step_state_ == 1 && !binding_->tmpl.empty()) dispatch(binding_->tmpl);
+            else if (step_state_ == 2 && !binding_->tmpl_press.empty()) dispatch(binding_->tmpl_press);
+            else if (step_state_ == 0 && !binding_->tmpl_off.empty()) dispatch(binding_->tmpl_off);
+        }
+    }
+    int step_state() const { return step_state_; }
+
     void set_shortcut_digit(int digit) {
+        if (is_stepbutton_) {
+            shortcut_digit_ = 0;
+            shortcut(0);
+            return;
+        }
         shortcut_digit_ = digit;
         if (digit >= 1 && digit <= 9) {
             shortcut('0' + digit);
+        } else {
+            shortcut(0);
         }
     }
     int shortcut_digit() const { return shortcut_digit_; }
 
     void trigger_press() {
+        if (is_stepbutton_) {
+            set_step_state((step_state_ + 1) % 3, true);
+            return;
+        }
         value(1);
         if (binding_ && !binding_->tmpl_press.empty()) {
             dispatch(binding_->tmpl_press);
@@ -880,6 +932,7 @@ public:
     }
 
     void trigger_release() {
+        if (is_stepbutton_) return;
         value(0);
         if (binding_ && !binding_->tmpl.empty()) {
             dispatch(binding_->tmpl);
@@ -887,36 +940,72 @@ public:
         redraw();
     }
 
+static void draw_custom_rounded_box(int x, int y, int w, int h, int r, Fl_Color fill_col, Fl_Color border_col) {
+    fl_color(fill_col);
+    fl_rounded_rectf(x, y, w, h, r);
+    fl_color(border_col);
+    fl_line(x + r, y, x + w - r, y);                 // Top edge
+    fl_line(x + r, y + h - 1, x + w - r, y + h - 1); // Bottom edge
+    fl_line(x, y + r, x, y + h - r);                 // Left edge
+    fl_line(x + w - 1, y + r, x + w - 1, y + h - r); // Right edge
+    fl_arc(x, y, r * 2, r * 2, 90, 180);             // Top-Left
+    fl_arc(x + w - r * 2, y, r * 2, r * 2, 0, 90);   // Top-Right
+    fl_arc(x, y + h - r * 2, r * 2, r * 2, 180, 270); // Bottom-Left
+    fl_arc(x + w - r * 2, y + h - r * 2, r * 2, r * 2, 270, 360); // Bottom-Right
+}
+
     void draw() override {
         int bx = x(), by = y(), bw = w(), bh = h();
         bool is_down = (value() != 0) || (Fl::pushed() == this);
         bool has_focus = (Fl::focus() == this);
 
-        // 1. Depressed / Active State vs Up State
-        if (is_down) {
+        ReplCustomTheme theme = repl_get_active_custom_theme();
+        Fl_Color card_bg = repl_rgb_to_flcolor(theme.card);
+        Fl_Color win_bg = repl_rgb_to_flcolor(theme.bg);
+        Fl_Color border_col = has_focus ? repl_rgb_to_flcolor(theme.focus) : repl_rgb_to_flcolor(theme.border);
+
+        // First clear bounding rect with window canvas background to prevent corner bleed
+        fl_color(win_bg);
+        fl_rectf(bx, by, bw, bh);
+
+        // 1. Flawless 100% Symmetric 4-Corner Rounded Box Rendering
+        if (is_stepbutton_) {
+            if (step_state_ == 1) { // Normal Velocity: Cyan / Sky Blue
+                Fl_Color fill = is_down ? fl_rgb_color(0x03, 0x69, 0xa1) : fl_rgb_color(0x02, 0x84, 0xc7);
+                draw_custom_rounded_box(bx, by, bw, bh, 4, fill, fl_rgb_color(0x07, 0x59, 0x85));
+            } else if (step_state_ == 2) { // Accent Velocity: Vivid Orange / Amber
+                Fl_Color fill = is_down ? fl_rgb_color(0xc2, 0x41, 0x0c) : fl_rgb_color(0xf9, 0x73, 0x16);
+                draw_custom_rounded_box(bx, by, bw, bh, 4, fill, fl_rgb_color(0x9a, 0x34, 0x12));
+            } else { // Off State: Medium Slate Pad with High Legibility
+                Fl_Color fill = is_down ? fl_rgb_color(0x27, 0x35, 0x49) : fl_rgb_color(0x33, 0x41, 0x55);
+                draw_custom_rounded_box(bx, by, bw, bh, 4, fill, fl_rgb_color(0x64, 0x74, 0x8b));
+            }
+        } else if (is_down) {
             Fl_Color bg = fl_rgb_color(0x0d, 0x6e, 0xfd);     // #0d6efd Primary Blue
             Fl_Color border = fl_rgb_color(0x0b, 0x5e, 0xd7); // #0b5ed7 Darker border
-            fl_color(bg);
-            fl_rounded_rectf(bx, by, bw, bh, 4);
-            fl_color(border);
-            fl_rounded_rect(bx, by, bw, bh, 4);
+            draw_custom_rounded_box(bx, by, bw, bh, 4, bg, border);
         } else {
-            draw_box();
-            if (has_focus) {
-                uchar r = 0, g = 0, b = 0;
-                Fl::get_color(FL_BACKGROUND_COLOR, r, g, b);
-                bool is_dark = (r < 128);
-                Fl_Color focus_col = is_dark ? fl_rgb_color(0x38, 0xbd, 0xf8) : fl_rgb_color(0x0d, 0x6e, 0xfd);
-                fl_color(focus_col);
-                fl_rounded_rect(bx, by, bw, bh, 4);
-            }
+            draw_custom_rounded_box(bx, by, bw, bh, 4, card_bg, border_col);
         }
 
-        // 2. Multiline (two-line) formatting vs single-line label
+        // Active Step LED Playhead Highlight (Vivid Emerald Green LED pill with top glow)
+        if (step_highlight_) {
+            Fl_Color led_col = fl_rgb_color(0x22, 0xc5, 0x5e);  // Emerald Green LED (#22c55e)
+            Fl_Color glow_col = fl_rgb_color(0x4a, 0xde, 0x80); // Light Green Glow (#4ade80)
+            int pill_w = 14;
+            if (pill_w > bw - 4) pill_w = bw - 4;
+            int px = bx + (bw - pill_w) / 2;
+            fl_color(glow_col);
+            fl_rounded_rectf(px - 1, by + 2, pill_w + 2, 4, 1);
+            fl_color(led_col);
+            fl_rounded_rectf(px, by + 3, pill_w, 2, 1);
+        }
+
+        // 2. High-contrast crisp white label text for all buttons
         const char *lbl = label();
         if (lbl && *lbl) {
             const char *nl = strchr(lbl, '\n');
-            Fl_Color text_col = is_down ? FL_WHITE : labelcolor();
+            Fl_Color text_col = (theme.is_dark || is_stepbutton_ || is_down) ? fl_rgb_color(0xff, 0xff, 0xff) : labelcolor();
 
             if (nl) {
                 std::string line1(lbl, nl - lbl);
@@ -932,30 +1021,47 @@ public:
                 fl_font(FL_HELVETICA_ITALIC, 10);
                 fl_draw(line2.c_str(), bx, by + bh / 2 + 1, bw, bh / 2 - 4, FL_ALIGN_CENTER);
             } else {
-                if (is_down) {
-                    Fl_Color old_color = labelcolor();
-                    labelcolor(FL_WHITE);
-                    draw_label();
-                    labelcolor(old_color);
-                } else {
-                    draw_label();
-                }
+                Fl_Color old_color = labelcolor();
+                labelcolor(text_col);
+                draw_label();
+                labelcolor(old_color);
             }
         }
 
-        // 3. Draw shortcut badge [1]..[8] if set
-        if (shortcut_digit_ >= 1 && shortcut_digit_ <= 9) {
+        // 3. Draw shortcut badge [1]..[8] with vivid glowing cyan/amber contrast
+        if (!is_stepbutton_ && shortcut_digit_ >= 1 && shortcut_digit_ <= 9) {
             char badge[8];
             snprintf(badge, sizeof badge, "[%d]", shortcut_digit_);
             fl_font(FL_HELVETICA_BOLD, 10);
-            Fl_Color badge_col = is_down ? fl_rgb_color(0xe0, 0xf2, 0xfe) : fl_rgb_color(0x0d, 0x6e, 0xfd);
+            Fl_Color badge_col = fl_rgb_color(0x38, 0xbd, 0xf8); // Vivid Light Sky Blue (#38bdf8)
             fl_color(badge_col);
             fl_draw(badge, bx + bw - 28, by + 4, 22, 12, FL_ALIGN_RIGHT);
         }
     }
 
+    int test_shortcut() {
+        if (!is_stepbutton_ && shortcut_digit_ >= 1 && shortcut_digit_ <= 9) {
+            return (Fl::event_key() == ('0' + shortcut_digit_));
+        }
+        return 0;
+    }
+
 protected:
     int handle(int event) override {
+        if (event == FL_SHORTCUT) {
+            if (test_shortcut()) {
+                trigger_press();
+                if (!is_stepbutton_) {
+                    repl_add_timeout(0.15, [](void *data) {
+                        ModalButton *mb = (ModalButton*)data;
+                        mb->trigger_release();
+                    }, this);
+                }
+                return 1;
+            }
+            return 0;
+        }
+
         if (event == FL_FOCUS || event == FL_UNFOCUS) {
             redraw();
             if (parent()) parent()->redraw();
@@ -972,21 +1078,16 @@ protected:
 
         int old_val = value();
         int r = Fl_Button::handle(event);
-        int new_val = value();
-
-        if (binding_) {
-            if (old_val == 0 && new_val == 1) {
-                trigger_press();
-            } else if (old_val == 1 && new_val == 0) {
-                trigger_release();
-            }
-        }
+        if (value() != old_val) redraw();
         return r;
     }
 
 private:
     ItemBinding *binding_;
     int shortcut_digit_;
+    bool step_highlight_;
+    bool is_stepbutton_;
+    int step_state_;
 };
 
 class GridGroup : public Fl_Group {
@@ -1451,6 +1552,7 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     bind->name = it.name;
                     bind->tmpl = it.tmpl;
                     bind->tmpl_press = it.tmpl_press;
+                    bind->tmpl_off = it.tmpl_off;
                     pw->bindings.push_back(bind);
 
                     ModalButton *b = new ModalButton(cols[c].first, cell_y, cols[c].second, H_GRID_BUTTON);
@@ -1458,8 +1560,8 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     b->copy_label(it.name.c_str());
                     b->align(FL_ALIGN_CENTER);
                     b->set_binding(bind);
+                    b->set_is_stepbutton(it.is_stepbutton);
                     b->user_data(bind);
-                    if (idx < 8) b->set_shortcut_digit(idx + 1);
                     LayoutGridCell cell;
                     cell.btn = b; cell.row = r; cell.col = c;
                     lb.grid.cells.push_back(cell);
@@ -1560,6 +1662,9 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
                     b->copy_label(it.name.c_str());
                     b->align(FL_ALIGN_CENTER);
                     b->set_binding(bind);
+                    if (it.shortcut_digit >= 1 && it.shortcut_digit <= 9) {
+                        b->set_shortcut_digit(it.shortcut_digit);
+                    }
                     b->user_data(bind);
                     pw->content->add(b);
                     litem.control = b;
@@ -1597,16 +1702,6 @@ int build_widgets(panel_win_t *pw, const ParsedWindow &pwin) {
 
         pw->blocks.push_back(lb);
         y += rh + GAP_Y;
-    }
-
-    std::vector<ModalButton*> all_grid_btns;
-    collect_grid_buttons(pw->content, all_grid_btns);
-    for (size_t i = 0; i < all_grid_btns.size(); ++i) {
-        if (i < 8) {
-            all_grid_btns[i]->set_shortcut_digit((int)i + 1);
-        } else {
-            all_grid_btns[i]->set_shortcut_digit(0);
-        }
     }
 
     return y + MARGIN;
@@ -1983,6 +2078,48 @@ static void enum_controls_recursive(Fl_Group *g, panel_value_enum_fn fn, void *u
     }
 }
 
+static void collect_modal_buttons(Fl_Group *g, std::vector<ModalButton*> &buttons) {
+    if (!g) return;
+    for (int i = 0; i < g->children(); ++i) {
+        Fl_Widget *w = g->child(i);
+        if (ModalButton *mb = dynamic_cast<ModalButton*>(w)) {
+            buttons.push_back(mb);
+        } else if (Fl_Group *sub = dynamic_cast<Fl_Group*>(w)) {
+            collect_modal_buttons(sub, buttons);
+        }
+    }
+}
+
+void panel_set_step_highlight(panel_win_t *pw, int step_index) {
+    if (!pw || !pw->content) return;
+    for (size_t bi = 0; bi < pw->blocks.size(); ++bi) {
+        if (pw->blocks[bi].kind == BK_GRID) {
+            const LayoutGridBlock &grid = pw->blocks[bi].grid;
+            for (size_t ci = 0; ci < grid.cells.size(); ++ci) {
+                const LayoutGridCell &cell = grid.cells[ci];
+                if (ModalButton *mb = dynamic_cast<ModalButton*>(cell.btn)) {
+                    bool highlight = (step_index >= 0 && cell.col == step_index);
+                    if (mb->step_highlight() != highlight) {
+                        mb->set_step_highlight(highlight);
+                    }
+                }
+            }
+        }
+    }
+}
+
+int panel_set_step_state(panel_win_t *pw, const char *control_name, int state, int fire_command) {
+    if (!pw || !pw->content || !control_name) return -1;
+    Fl_Widget *w = find_control_by_name(pw->content, control_name);
+    if (!w) return -1;
+    if (ModalButton *mb = dynamic_cast<ModalButton*>(w)) {
+        mb->set_is_stepbutton(true);
+        mb->set_step_state(state, fire_command != 0);
+        return 0;
+    }
+    return -1;
+}
+
 int panel_enum_values(panel_win_t *pw, panel_value_enum_fn fn, void *user_data) {
     if (!pw || !pw->content || !fn) return -1;
     enum_controls_recursive(pw->content, fn, user_data);
@@ -2067,6 +2204,38 @@ void panel_registry_hide(const char *name) {
     if (pw) panel_hide(pw);
 }
 
+void panel_registry_set_step_highlight(int step_index) {
+    for (std::map<std::string, RegistryEntry>::iterator it = g_registry.begin(); it != g_registry.end(); ++it) {
+        if (it->second.pw) panel_set_step_highlight(it->second.pw, step_index);
+    }
+}
+
+void panel_registry_set_grid_step_state(int voice, int step, int state) {
+    if (step < 0 || step >= 16) return;
+    for (std::map<std::string, RegistryEntry>::iterator it = g_registry.begin(); it != g_registry.end(); ++it) {
+        panel_win_t *pw = it->second.pw;
+        if (!pw || !pw->content) continue;
+        int grid_idx = 0;
+        for (size_t bi = 0; bi < pw->blocks.size(); ++bi) {
+            if (pw->blocks[bi].kind == BK_GRID) {
+                if (grid_idx == voice) {
+                    const LayoutGridBlock &grid = pw->blocks[bi].grid;
+                    for (size_t ci = 0; ci < grid.cells.size(); ++ci) {
+                        const LayoutGridCell &cell = grid.cells[ci];
+                        if (cell.col == step) {
+                            if (ModalButton *mb = dynamic_cast<ModalButton*>(cell.btn)) {
+                                mb->set_is_stepbutton(true);
+                                mb->set_step_state(state, false);
+                            }
+                        }
+                    }
+                }
+                grid_idx++;
+            }
+        }
+    }
+}
+
 int panel_registry_set_value(const char *panel_name, const char *control_name, const char *val_str, int fire_command) {
     panel_win_t *pw = panel_registry_get(panel_name);
     if (!pw) return -1;
@@ -2101,4 +2270,82 @@ void panel_registry_destroy(const char *name) {
     g_registry.erase(it);
 }
 
+void repl_add_timeout(double t, repl_timeout_cb cb, void *data) {
+    if (cb) Fl::add_timeout(t, cb, data);
+}
+
+void repl_remove_timeout(repl_timeout_cb cb, void *data) {
+    if (cb) Fl::remove_timeout(cb, data);
+}
+
 } // extern "C"
+
+static ModalButton* find_shortcut_button(Fl_Group *grp, int digit) {
+    if (!grp) return NULL;
+    for (int i = 0; i < grp->children(); ++i) {
+        Fl_Widget *child = grp->child(i);
+        ModalButton *mb = dynamic_cast<ModalButton*>(child);
+        if (mb && !mb->is_stepbutton() && mb->shortcut_digit() == digit) {
+            return mb;
+        }
+        Fl_Group *sub = dynamic_cast<Fl_Group*>(child);
+        if (sub) {
+            ModalButton *found = find_shortcut_button(sub, digit);
+            if (found) return found;
+        }
+    }
+    return NULL;
+}
+
+static int panel_global_shortcut_handler(int event) {
+    if (event == FL_SHORTCUT || event == FL_KEYBOARD) {
+        int state = Fl::event_state();
+        int key = Fl::event_key();
+
+        if ((state & FL_CTRL) && (key == '`' || key == '~' || key == 0x60)) {
+            for (Fl_Window *w = Fl::first_window(); w; w = Fl::next_window(w)) {
+                w->show();
+                Fl::focus(w);
+            }
+            return 1;
+        }
+
+        // Global keys 1..8 for live drum performance pads:
+        // Intercept when focus is in a panel window or when Alt is held
+        if (!(state & (FL_CTRL | FL_META)) && key >= '1' && key <= '8') {
+            Fl_Widget *focused = Fl::focus();
+            bool focus_in_panel = false;
+            if (focused) {
+                for (Fl_Widget *p = focused; p; p = p->parent()) {
+                    if (dynamic_cast<Fl_Window*>(p) && p != Fl::first_window()) {
+                        focus_in_panel = true;
+                        break;
+                    }
+                }
+            }
+
+            if (focus_in_panel || (state & FL_ALT)) {
+                int digit = key - '0';
+                for (Fl_Window *w = Fl::first_window(); w; w = Fl::next_window(w)) {
+                    ModalButton *target = find_shortcut_button(w, digit);
+                    if (target) {
+                        target->trigger_press();
+                        repl_add_timeout(0.15, [](void *data) {
+                            ModalButton *mb = (ModalButton*)data;
+                            mb->trigger_release();
+                        }, target);
+                        return 1;
+                    }
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+struct PanelGlobalShortcutInit {
+    PanelGlobalShortcutInit() {
+        Fl::add_handler(panel_global_shortcut_handler);
+    }
+};
+static PanelGlobalShortcutInit s_panel_global_shortcut_init;

@@ -1,0 +1,167 @@
+# =====================================================================
+# Pro Hardware Drum Machine & 303 Sequencer Panel
+# =====================================================================
+# Full-featured hardware drum machine & acid synth control panel
+# leveraging SKRED's M<BPM> master clock, y0..y3 pattern slots,
+# x0..x15 pattern step programming with explicit rests [#],
+# zq downbeat queuing, and ym mutes.
+# =====================================================================
+
+window "Pro TR-909 / 303 Hardware Drum Machine & Sequencer" 640 780
+
+# ---------------------------------------------------------------------
+# 1. DRUM KIT LOADING & MASTER CLOCK
+# ---------------------------------------------------------------------
+label "-- Kit Loading & Master Clock (M<BPM> 16th-Note Mode) --"
+
+row
+  button "LOAD CLEAN DRUM KIT\nSynthesize Clean Drums" "[sk/load_drums.sk]/ls"
+  button "LOAD 909 TECHNO\nTR-909 & 303 Groove" "[sk/drum_909_techno.sk]/ls"
+  button "LOAD SYNTHWAVE LINN\nLinnDrum Synthwave" "[sk/drum_linn_synthwave.sk]/ls"
+endrow
+
+row
+  slider bpm 60 200 BPM "M %d" =130 ~live
+  choice division "16th-Notes 8th-Notes 4th-Notes 32nd-Rolls" "M %d %s" =16th-Notes
+endrow
+
+row
+  button "PLAY NOW\nInstant Start" "Z1"
+  button "QUANTIZED START\nSync to Downbeat" "zq1"
+  button "STOP CLOCK\nPause Engine" "Z0"
+  slider swing 50 75 % "swing_set %d" =50 ~live
+endrow
+
+# ---------------------------------------------------------------------
+# 2. PATTERN BANK SWITCHING & LIVE CHANNEL MUTES
+# ---------------------------------------------------------------------
+label "-- Pattern Memory Banks (Edits Apply to Active Bank y0..y3) --"
+
+row
+  button "PATTERN 0\nSelect Bank 0 (y0)" "zq y0"
+  button "PATTERN 1\nSelect Bank 1 (y1)" "zq y1"
+  button "PATTERN 2\nSelect Bank 2 (y2)" "zq y2"
+  button "PATTERN 3\nSelect Bank 3 (y3)" "zq y3"
+endrow
+
+label "-- Track Mute Controls (ym Live Channel Muting) --"
+
+row
+  toggle mute_bd "y0 ym%d" =off
+  toggle mute_sd "y1 ym%d" =off
+  toggle mute_ch "y2 ym%d" =off
+  toggle mute_oh "y3 ym%d" =off
+  toggle mute_tb "y4 ym%d" =off
+endrow
+
+# ---------------------------------------------------------------------
+# 3. LIVE HARDWARE PERFORMANCE PADS (KEYBOARD KEYS 1..8)
+# ---------------------------------------------------------------------
+label "-- Live Drum Pads & Expression Fills (Keyboard Keys 1..8) --"
+
+row
+  button "Kick (BD)\nMain Punchy Kick" "v0l1.0 f440" @1
+  button "Snare (SD)\nCrispy Snap" "v1l1.0 f440" @2
+  button "Closed Hat\nTight Tick" "v2l0.8 f440" @3
+  button "Open Hat\nSizzle Cymbal" "v3l0.8 f440" @4
+endrow
+
+row
+  button "32nd Snare Roll\nInstant 4x Roll" "v1l0.8 f440 z*4" @5
+  button "Triplet Hat Roll\nInstant 3x Triplet" "v2l0.8 f440 z*3" @6
+  button "Fast 64th Fill\nInstant 8x Fill" "v1l1.0 f440 z*8" @7
+  button "Panic Stop\nSilence All Notes" "y* z0" @8
+endrow
+
+# ---------------------------------------------------------------------
+# 4. 16-STEP SEQUENCER PROGRAMMING GRIDS (x0..x15)
+# ---------------------------------------------------------------------
+label "-- 16-Step Pattern Sequencer Grids (Off / Normal / Accent) --"
+
+label "Voice 0: Kick (BD)"
+grid 1 16
+  button "01" "[v0l0.5] x0" "[v0l1.0] x0" "[#] x0"
+  button "02" "[v0l0.5] x1" "[v0l1.0] x1" "[#] x1"
+  button "03" "[v0l0.5] x2" "[v0l1.0] x2" "[#] x2"
+  button "04" "[v0l0.5] x3" "[v0l1.0] x3" "[#] x3"
+  button "05" "[v0l0.5] x4" "[v0l1.0] x4" "[#] x4"
+  button "06" "[v0l0.5] x5" "[v0l1.0] x5" "[#] x5"
+  button "07" "[v0l0.5] x6" "[v0l1.0] x6" "[#] x6"
+  button "08" "[v0l0.5] x7" "[v0l1.0] x7" "[#] x7"
+  button "09" "[v0l0.5] x8" "[v0l1.0] x8" "[#] x8"
+  button "10" "[v0l0.5] x9" "[v0l1.0] x9" "[#] x9"
+  button "11" "[v0l0.5] x10" "[v0l1.0] x10" "[#] x10"
+  button "12" "[v0l0.5] x11" "[v0l1.0] x11" "[#] x11"
+  button "13" "[v0l0.5] x12" "[v0l1.0] x12" "[#] x12"
+  button "14" "[v0l0.5] x13" "[v0l1.0] x13" "[#] x13"
+  button "15" "[v0l0.5] x14" "[v0l1.0] x14" "[#] x14"
+  button "16" "[v0l0.5] x15" "[v0l1.0] x15" "[#] x15"
+endgrid
+
+label "Voice 1: Snare (SD)"
+grid 1 16
+  button "01" "[v1l0.5] x0" "[v1l1.0] x0" "[#] x0"
+  button "02" "[v1l0.5] x1" "[v1l1.0] x1" "[#] x1"
+  button "03" "[v1l0.5] x2" "[v1l1.0] x2" "[#] x2"
+  button "04" "[v1l0.5] x3" "[v1l1.0] x3" "[#] x3"
+  button "05" "[v1l0.5] x4" "[v1l1.0] x4" "[#] x4"
+  button "06" "[v1l0.5] x5" "[v1l1.0] x5" "[#] x5"
+  button "07" "[v1l0.5] x6" "[v1l1.0] x6" "[#] x6"
+  button "08" "[v1l0.5] x7" "[v1l1.0] x7" "[#] x7"
+  button "09" "[v1l0.5] x8" "[v1l1.0] x8" "[#] x8"
+  button "10" "[v1l0.5] x9" "[v1l1.0] x9" "[#] x9"
+  button "11" "[v1l0.5] x10" "[v1l1.0] x10" "[#] x10"
+  button "12" "[v1l0.5] x11" "[v1l1.0] x11" "[#] x11"
+  button "13" "[v1l0.5] x12" "[v1l1.0] x12" "[#] x12"
+  button "14" "[v1l0.5] x13" "[v1l1.0] x13" "[#] x13"
+  button "15" "[v1l0.5] x14" "[v1l1.0] x14" "[#] x14"
+  button "16" "[v1l0.8 z*4] x15" "[v1l1.0 z*4] x15" "[#] x15"
+endgrid
+
+label "Voice 2 & 3: Hi-Hats (CH & Offbeat OH)"
+grid 1 16
+  button "01" "[v2l0.4] x0" "[v3l0.8] x0" "[#] x0"
+  button "02" "[v2l0.4] x1" "[v3l0.8] x1" "[#] x1"
+  button "03" "[v3l0.8] x2" "[v3l1.0] x2" "[#] x2"
+  button "04" "[v2l0.4] x3" "[v3l0.8] x3" "[#] x3"
+  button "05" "[v2l0.4] x4" "[v3l0.8] x4" "[#] x4"
+  button "06" "[v2l0.4] x5" "[v3l0.8] x5" "[#] x5"
+  button "07" "[v3l0.8] x6" "[v3l1.0] x6" "[#] x6"
+  button "08" "[v2l0.4] x7" "[v3l0.8] x7" "[#] x7"
+  button "09" "[v2l0.4] x8" "[v3l0.8] x8" "[#] x8"
+  button "10" "[v2l0.4] x9" "[v3l0.8] x9" "[#] x9"
+  button "11" "[v3l0.8] x10" "[v3l1.0] x10" "[#] x10"
+  button "12" "[v2l0.4] x11" "[v3l0.8] x11" "[#] x11"
+  button "13" "[v2l0.4] x12" "[v3l0.8] x12" "[#] x12"
+  button "14" "[v2l0.4] x13" "[v3l0.8] x13" "[#] x13"
+  button "15" "[v3l0.8] x14" "[v3l1.0] x14" "[#] x14"
+  button "16" "[v2l0.8 z*3] x15" "[v3l1.0 z*3] x15" "[#] x15"
+endgrid
+
+label "Voice 4: 303 Acid Bassline (Notes)"
+grid 1 16
+  button "C2" "[v4n36l0.6] x0" "[v4n36l1.0] x0" "[#] x0"
+  button "D2" "[v4n38l0.6] x1" "[v4n38l1.0] x1" "[#] x1"
+  button "C3" "[v4n48l0.6] x2" "[v4n48l1.0] x2" "[#] x2"
+  button "Eb2" "[v4n39l0.6] x3" "[v4n39l1.0] x3" "[#] x3"
+  button "F2" "[v4n41l0.6] x4" "[v4n41l1.0] x4" "[#] x4"
+  button "F#2" "[v4n42l0.6] x5" "[v4n42l1.0] x5" "[#] x5"
+  button "G2" "[v4n43l0.6] x6" "[v4n43l1.0] x6" "[#] x6"
+  button "Bb2" "[v4n46l0.6] x7" "[v4n46l1.0] x7" "[#] x7"
+  button "C2" "[v4n36l0.6] x8" "[v4n36l1.0] x8" "[#] x8"
+  button "C3" "[v4n48l0.6] x9" "[v4n48l1.0] x9" "[#] x9"
+  button "Eb2" "[v4n39l0.6] x10" "[v4n39l1.0] x10" "[#] x10"
+  button "F2" "[v4n41l0.6] x11" "[v4n41l1.0] x11" "[#] x11"
+  button "G2" "[v4n43l0.6] x12" "[v4n43l1.0] x12" "[#] x12"
+  button "Bb2" "[v4n46l0.6] x13" "[v4n46l1.0] x13" "[#] x13"
+  button "C3" "[v4n48l0.6] x14" "[v4n48l1.0] x14" "[#] x14"
+  button "Bb2" "[v4n46l0.6] x15" "[v4n46l1.0] x15" "[#] x15"
+endgrid
+
+label "-- Sound Shaping & Auto-Returning Pitch Bends --"
+
+row
+  slider kick_bend -12 12 st "v0 fb%f" =0 ~spring ~live
+  slider snare_decay 10 500 ms "v1 a%d" =150 ~live
+  slider acid_cutoff 100 8000 Hz "v4 f%d" =2500 ~live
+endrow

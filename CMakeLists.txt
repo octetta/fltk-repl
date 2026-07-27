@@ -69,6 +69,10 @@ add_library(fltk_repl::replfltk ALIAS replfltk)
 target_include_directories(replfltk PUBLIC include PRIVATE src ${SKRED_INCLUDE_DIR})
 target_link_libraries(replfltk PUBLIC ${REPL_FLTK_TARGET})
 
+if(WIN32)
+    target_link_libraries(replfltk PUBLIC ws2_32)
+endif()
+
 if(APPLE)
     target_link_libraries(replfltk PUBLIC "-framework Cocoa")
 endif()
@@ -110,7 +114,7 @@ endif()
 # Download Skred release into vendor/
 # ---------------------------------------------------------------------
 option(SKRED_BUILD_REPL "Build Skred REPL" ${FLTK_REPL_IS_TOP_LEVEL})
-set(SKRED_VERSION "0.53.2" CACHE STRING "Skred version to use")
+set(SKRED_VERSION "0.54.4" CACHE STRING "Skred version to use")
 set(SKRED_ROOT "" CACHE PATH "Path to skred package (auto-filled)")
 
 set(VENDOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor")
@@ -264,6 +268,11 @@ if(BUILD_TESTING)
     target_include_directories(repl_font_picker_test PRIVATE src include)
     target_link_libraries(repl_font_picker_test PRIVATE replfltk)
     add_test(NAME repl_font_picker_test COMMAND repl_font_picker_test)
+
+    add_executable(repl_panel_step_test tests/panel_step_test.cpp)
+    target_include_directories(repl_panel_step_test PRIVATE src include)
+    target_link_libraries(repl_panel_step_test PRIVATE replfltk)
+    add_test(NAME repl_panel_step_test COMMAND repl_panel_step_test)
 endif()
 
 message(STATUS "fltk-repl configured successfully!")

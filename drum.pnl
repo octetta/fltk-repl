@@ -1,0 +1,91 @@
+# =====================================================================
+# Skred Drum Machine & Step Sequencer Control Panel
+# =====================================================================
+# Demonstrates 16th-note drum pattern stepping with M<BPM> master tempo,
+# 16-step button grids per track, sound shaping, and ~spring pitch bends.
+# =====================================================================
+
+window "Skred Drum Machine & Step Sequencer" 560 620
+
+label "-- Transport & Master Clock (M<BPM> 16th-Note Step Mode) --"
+
+row
+  slider bpm 60 200 BPM "M%d" =120 ~live @3
+  choice division "16th-Notes 8th-Notes 4th-Notes 32nd-Rolls" "M %d %s" =16th-Notes @2
+endrow
+
+row
+  button "Play\nRun Clock" "M120" @1
+  button "Stop\nPause Engine" "M0" @1
+  slider swing 50 75 % "swing_set %d" =50 ~live @2
+endrow
+
+label "-- 16-Step Sequential Drum Grid --"
+
+label "Kick / Bass Drum (BD)"
+grid 1 16
+  button "1" "bd_step 1"
+  button "2" "bd_step 2"
+  button "3" "bd_step 3"
+  button "4" "bd_step 4"
+  button "5" "bd_step 5"
+  button "6" "bd_step 6"
+  button "7" "bd_step 7"
+  button "8" "bd_step 8"
+  button "9" "bd_step 9"
+  button "10" "bd_step 10"
+  button "11" "bd_step 11"
+  button "12" "bd_step 12"
+  button "13" "bd_step 13"
+  button "14" "bd_step 14"
+  button "15" "bd_step 15"
+  button "16" "bd_step 16"
+endgrid
+
+label "Snare Drum (SD)"
+grid 1 16
+  button "1" "sd_step 1"
+  button "2" "sd_step 2"
+  button "3" "sd_step 3"
+  button "4" "sd_step 4"
+  button "5" "sd_step 5"
+  button "6" "sd_step 6"
+  button "7" "sd_step 7"
+  button "8" "sd_step 8"
+  button "9" "sd_step 9"
+  button "10" "sd_step 10"
+  button "11" "sd_step 11"
+  button "12" "sd_step 12"
+  button "13" "sd_step 13"
+  button "14" "sd_step 14"
+  button "15" "sd_step 15"
+  button "16" "sd_step 16"
+endgrid
+
+label "Closed Hi-Hat (CH)"
+grid 1 16
+  button "1" "ch_step 1"
+  button "2" "ch_step 2"
+  button "3" "ch_step 3"
+  button "4" "ch_step 4"
+  button "5" "ch_step 5"
+  button "6" "ch_step 6"
+  button "7" "ch_step 7"
+  button "8" "ch_step 8"
+  button "9" "ch_step 9"
+  button "10" "ch_step 10"
+  button "11" "ch_step 11"
+  button "12" "ch_step 12"
+  button "13" "ch_step 13"
+  button "14" "ch_step 14"
+  button "15" "ch_step 15"
+  button "16" "ch_step 16"
+endgrid
+
+label "-- Track Sound Shaping & Spring Pitch Bend --"
+
+row
+  slider bd_pitch -12 12 st "bd_pitch_bend %f" =0 ~spring ~live @2
+  slider sd_decay 10 500 ms "sd_decay_set %d" =150 ~live @2
+  slider ch_decay 5 200 ms "ch_decay_set %d" =40 ~live @2
+endrow

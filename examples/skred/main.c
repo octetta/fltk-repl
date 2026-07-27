@@ -84,9 +84,40 @@ static int parse_int(const char *option, const char *text, int *out) {
     return 1;
 }
 
+static void parse_ys_dump_line(const char *line);
+
+static void print_skred_log_silent(app_state *app) {
+    (void)app;
+    char *log = skred_log();
+    if (log && *log) {
+        char *copy = strdup(log);
+        if (copy) {
+            char *saveptr = NULL;
+            char *tok = strtok_r(copy, "\r\n", &saveptr);
+            while (tok) {
+                parse_ys_dump_line(tok);
+                tok = strtok_r(NULL, "\r\n", &saveptr);
+            }
+            free(copy);
+        }
+    }
+}
+
 static void print_skred_log(app_state *app) {
     char *log = skred_log();
-    if (log && *log) repl_print(app->repl, log);
+    if (log && *log) {
+        char *copy = strdup(log);
+        if (copy) {
+            char *saveptr = NULL;
+            char *tok = strtok_r(copy, "\r\n", &saveptr);
+            while (tok) {
+                parse_ys_dump_line(tok);
+                tok = strtok_r(NULL, "\r\n", &saveptr);
+            }
+            free(copy);
+        }
+        repl_print(app->repl, log);
+    }
 }
 
 static const char *miniaudio_version(void) {
@@ -488,7 +519,12 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
         }
         if (n2 >= 2 && strcmp(pname, "show") == 0) { panel_registry_show(rest); return; }
         if (n2 >= 2 && strcmp(pname, "hide") == 0) { panel_registry_hide(rest); return; }
-        repl_println(app->repl, "usage: panel load <name> <file.pnl> [key=val ...] | list | dump <name> | set <name> <ctrl> <val> [fire] | get <name> [ctrl] | reload <name> | show <name> | hide <name>");
+        if (n2 >= 2 && (strcmp(pname, "step") == 0 || strcmp(pname, "highlight") == 0)) {
+            int step_idx = atoi(rest);
+            panel_registry_set_step_highlight(step_idx);
+            return;
+        }
+        repl_println(app->repl, "usage: panel load <name> <file.pnl> [key=val ...] | list | dump <name> | set <name> <ctrl> <val> [fire] | get <name> [ctrl] | step <N> | reload <name> | show <name> | hide <name>");
         return;
     }
 
@@ -726,13 +762,59 @@ static void cmd_quit(int argc, char **argv, void *userdata) {
     repl_quit(app->repl);
 }
 
+static int s_playhead_step = -1;
+static int s_playhead_bpm = 130;
+static int s_playhead_subdivision = 16;
+static int s_playhead_running = 0;
+
+static void playhead_timer_cb(void *data) {
+    (void)data;
+    if (!s_playhead_running) return;
+    s_playhead_step = (s_playhead_step + 1) % 16;
+    panel_registry_set_step_highlight(s_playhead_step);
+    double step_sec = 60.0 / ((double)s_playhead_bpm * ((double)s_playhead_subdivision / 4.0));
+    if (step_sec < 0.01) step_sec = 0.01;
+    repl_add_timeout(step_sec, playhead_timer_cb, NULL);
+}
+
 static void panel_to_skred(const char *line, void *user_data) {
     (void)user_data;
+    if (!line) return;
+
+    if ((line[0] == 'Z' && line[1] == '1') || (line[0] == 'z' && line[1] == 'q' && line[2] == '1')) {
+        s_playhead_running = 1;
+        skred_command("yc1");
+    } else if (line[0] == 'Z' && line[1] == '0') {
+        s_playhead_running = 0;
+        panel_registry_set_step_highlight(-1);
+    } else if (line[0] == 'M' && (line[1] == ' ' || (line[1] >= '0' && line[1] <= '9'))) {
+        int bpm = 120, sub = 16;
+        if (sscanf(line, "M %d %d", &bpm, &sub) >= 1) {
+            if (bpm > 0) s_playhead_bpm = bpm;
+            if (sub > 0) s_playhead_subdivision = sub;
+        } else if (sscanf(line, "M%d", &bpm) == 1) {
+            if (bpm > 0) s_playhead_bpm = bpm;
+        }
+    }
+
     size_t len = strlen(line);
     char *cmd = (char *)malloc(len + 1);
     if (cmd) {
         memcpy(cmd, line, len + 1);
         skred_command(cmd);
+        if (strstr(cmd, "/ls")) {
+            for (int v = 0; v < 5; ++v) {
+                for (int s = 0; s < 16; ++s) {
+                    panel_registry_set_grid_step_state(v, s, 0);
+                }
+            }
+            skred_command("ys?");
+            if (user_data) {
+                print_skred_log_silent((app_state *)user_data);
+            }
+        } else if (user_data) {
+            print_skred_log((app_state *)user_data);
+        }
         free(cmd);
     }
 }
@@ -742,19 +824,6 @@ static void panel_error_to_repl(const char *message, void *user_data) {
     if (app && app->repl && message) repl_println(app->repl, message);
 }
 
-/* Skred-side entry point: bound to Skode's /ff8 via
- * skred_foreign_function_bind() below. call->string is whatever Skode's
- * current [string] context holds when /ff8 runs -- e.g. in
- * "[waveform wave 0] /ff8", call->string is "waveform wave 0". That text
- * is handed to foreign_bridge_dispatch(), which is safe to call from any
- * thread: it queues the line to run on the FLTK main thread via
- * Fl::awake(), where it enters the normal REPL dispatcher exactly as if it
- * had been typed at the prompt. This indirection matters because
- * /ff8 can fire from Skred's control-dispatcher thread (patterns,
- * repeats, /ceb response chains), not only from a line typed live at the
- * prompt -- see api.h's Threading Notes. call->string is only valid
- * during this call, so it must be handed off (not stored) before
- * returning; foreign_bridge_dispatch() copies it internally. */
 static _Thread_local int g_foreign_repl_dispatching;
 
 static void foreign_repl_handler(const char *line, void *user) {
@@ -765,12 +834,84 @@ static void foreign_repl_handler(const char *line, void *user) {
     g_foreign_repl_dispatching = 0;
 }
 
+static void parse_ys_dump_line(const char *line);
+
 static int fltk_repl_foreign_call(const skred_foreign_call_t *call, void *user) {
     (void)user;
     if (call->string && call->string[0]) {
+        parse_ys_dump_line(call->string);
         foreign_bridge_dispatch(call->string);
     }
     return 0;
+}
+
+#ifndef SKRED_CONTROL_EVENT_PATTERN_CHANGE
+#define SKRED_CONTROL_EVENT_PATTERN_CHANGE 10
+#endif
+#ifndef SKRED_CONTROL_EVENT_TEMPO_CHANGE
+#define SKRED_CONTROL_EVENT_TEMPO_CHANGE 11
+#endif
+#ifndef SKRED_CONTROL_EVENT_PATTERN_QUEUE
+#define SKRED_CONTROL_EVENT_PATTERN_QUEUE 12
+#endif
+#ifndef SKRED_CONTROL_EVENT_MUTE_CHANGE
+#define SKRED_CONTROL_EVENT_MUTE_CHANGE 13
+#endif
+#ifndef SKRED_CONTROL_EVENT_ERROR
+#define SKRED_CONTROL_EVENT_ERROR 14
+#endif
+
+static void parse_ys_dump_line(const char *line) {
+    if (!line) return;
+    const char *xpos = strstr(line, "x");
+    if (!xpos) return;
+    int step = atoi(xpos + 1);
+    if (step < 0 || step >= 16) return;
+
+    if (strstr(line, "[#]") || strstr(line, "[]")) {
+        for (int v = 0; v < 5; ++v) {
+            panel_registry_set_grid_step_state(v, step, 0);
+        }
+    } else {
+        for (int v = 0; v < 5; ++v) {
+            char vtag[8];
+            snprintf(vtag, sizeof(vtag), "v%d", v);
+            const char *vpos = strstr(line, vtag);
+            if (vpos) {
+                float vvel = 1.0f;
+                const char *lpos = strstr(vpos, "l");
+                if (lpos && lpos < xpos) vvel = (float)atof(lpos + 1);
+                int state = (vvel >= 0.8f) ? 2 : (vvel > 0.0f ? 1 : 0);
+                panel_registry_set_grid_step_state(v, step, state);
+            }
+        }
+    }
+}
+
+static void skred_control_event_cb(int fd, void *ud) {
+    (void)fd;
+    skred_control_event_t events[16];
+    int count = skred_control_event_poll(events, 16);
+    int last_step = -1;
+    for (int i = 0; i < count; ++i) {
+        uint32_t type = events[i].type;
+        if (type == SKRED_CONTROL_EVENT_PATTERN_STEP && events[i].step >= 0 && events[i].step < 16) {
+            if (s_playhead_running) last_step = events[i].step;
+        } else if (type == SKRED_CONTROL_EVENT_PATTERN_CHANGE || type == SKRED_CONTROL_EVENT_PATTERN_QUEUE) {
+            for (int v = 0; v < 5; ++v) {
+                for (int s = 0; s < 16; ++s) {
+                    panel_registry_set_grid_step_state(v, s, 0);
+                }
+            }
+            skred_command("ys?");
+            if (ud) print_skred_log_silent((app_state *)ud);
+        } else if (type == SKRED_CONTROL_EVENT_TEMPO_CHANGE) {
+            if (events[i].step > 0) s_playhead_bpm = events[i].step;
+        }
+    }
+    if (last_step >= 0) {
+        panel_registry_set_step_highlight(last_step);
+    }
 }
 
 static void load_appearance_preferences(repl_prefs *prefs, repl_ctx *repl) {
@@ -920,6 +1061,13 @@ int main(int argc, char **argv) {
         repl_destroy(app.repl);
         repl_prefs_destroy(prefs);
         return 1;
+    }
+
+    /* Enable Skred pattern control events ("yc1") and hook wait_fd into FLTK event loop */
+    skred_command("yc1");
+    int control_fd = skred_control_event_wait_fd();
+    if (control_fd >= 0) {
+        repl_add_fd(control_fd, skred_control_event_cb, &app);
     }
 
     if (skred_spectrogram_bind() != 0) {

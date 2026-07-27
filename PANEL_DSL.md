@@ -43,6 +43,48 @@ a specific Skred command.
 
 ---
 
+## Drum Machine & Step Sequencer Patterns (`M<BPM> [subdivision]`)
+
+```
+window "Drum Machine" 560 600
+
+label "-- Transport & Tempo (M<BPM> Mode) --"
+row
+  button "LOAD 808 KIT" "[808.sk]/ls" @2
+  slider bpm 60 200 BPM "M%d" =120 ~live @3
+  choice division "16th-Notes 8th-Notes 4th-Notes 32nd-Rolls" "M %d %s" =16th-Notes @2
+endrow
+
+label "-- 16-Step Sequential Drum Grid (3-State Velocity Buttons) --"
+grid 1 16
+  button "1" "v0l0.5" "v0l1.0"
+  button "2" "v0l0.5" "v0l1.0"
+  button "3" "v0l0.5" "v0l1.0"
+  button "4" "v0l0.5" "v0l1.0"
+  button "5" "v0l0.5" "v0l1.0"
+  button "6" "v0l0.5" "v0l1.0"
+  button "7" "v0l0.5" "v0l1.0"
+  button "8" "v0l0.5" "v0l1.0"
+  button "9" "v0l0.5" "v0l1.0"
+  button "10" "v0l0.5" "v0l1.0"
+  button "11" "v0l0.5" "v0l1.0"
+  button "12" "v0l0.5" "v0l1.0"
+  button "13" "v0l0.5" "v0l1.0"
+  button "14" "v0l0.5" "v0l1.0"
+  button "15" "v0l0.5" "v0l1.0"
+  button "16" "v0l0.5" "v0l1.0"
+endgrid
+
+row
+  slider bd_pitch -12 12 st "bd_pitch_bend %f" =0 ~spring ~live @2
+endrow
+```
+
+- **3-State Step Buttons**: Grid buttons with two templates cycle through 3 states: **Off (Gray)** $\rightarrow$ **Normal Velocity (Cyan `#0284c7`)** $\rightarrow$ **Accent Velocity (Orange `#f97316`)** $\rightarrow$ **Off**.
+- **Active Step LED Highlight**: Call `panel_set_step_highlight(pw, step_index)` to illuminate a glowing green LED playhead bar over active step `step_index` in real-time.
+
+---
+
 ## File structure
 
 - One statement per line.

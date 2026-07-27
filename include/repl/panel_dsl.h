@@ -186,6 +186,15 @@ panel_win_t *panel_registry_load(const char *name, const char *path); /* loads/r
 panel_win_t *panel_registry_load_params(const char *name, const char *path, const char *params);
 panel_win_t *panel_registry_get(const char *name);                     /* NULL if not loaded */
 int panel_registry_reload(const char *name);                           /* reload from the path/params used at load */
+void panel_registry_show(const char *name);
+void panel_registry_hide(const char *name);
+void panel_registry_set_step_highlight(int step_index);
+
+/* C-compatible FLTK timeout helpers */
+typedef void (*repl_timeout_cb)(void *data);
+void repl_add_timeout(double t, repl_timeout_cb cb, void *data);
+void repl_remove_timeout(repl_timeout_cb cb, void *data);
+
 /* Live Control Inspection & Update API for running panel instances.
  * `control_name` matches the widget name from the DSL.
  * `val_str` can be numeric ("5000"), toggle ("1"/"0"/"on"/"off"), or choice option ("saw").
@@ -194,6 +203,13 @@ int panel_registry_reload(const char *name);                           /* reload
 int panel_set_value(panel_win_t *pw, const char *control_name, const char *val_str, int fire_command);
 int panel_set_value_num(panel_win_t *pw, const char *control_name, double num_val, int fire_command);
 int panel_get_value(panel_win_t *pw, const char *control_name, char *buf, size_t buf_sz);
+
+/* Highlight active playhead step (0-indexed) across step button grids. */
+void panel_set_step_highlight(panel_win_t *pw, int step_index);
+
+/* Set step button velocity/accent state (0=off, 1=normal, 2=accent) by name. */
+int panel_set_step_state(panel_win_t *pw, const char *control_name, int state, int fire_command);
+void panel_registry_set_grid_step_state(int voice, int step, int state);
 
 /* Enumerate all interactive controls and current live values on a panel instance. */
 typedef void (*panel_value_enum_fn)(const char *control_name, const char *val_str, void *user_data);
