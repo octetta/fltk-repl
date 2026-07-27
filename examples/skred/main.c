@@ -826,14 +826,10 @@ static void panel_error_to_repl(const char *message, void *user_data) {
     if (app && app->repl && message) repl_println(app->repl, message);
 }
 
-static _Thread_local int g_foreign_repl_dispatching;
-
 static void foreign_repl_handler(const char *line, void *user) {
     app_state *app = (app_state *)user;
-    if (!app || !app->repl || g_foreign_repl_dispatching) return;
-    g_foreign_repl_dispatching = 1;
-    repl_dispatch_line(app->repl, line);
-    g_foreign_repl_dispatching = 0;
+    if (!app || !app->repl) return;
+    repl_println(app->repl, line);
 }
 
 static void parse_ys_dump_line(const char *line);

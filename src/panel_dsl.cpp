@@ -228,11 +228,11 @@ bool apply_params(std::string &text, const char *params_str, std::string &err) {
             }
             std::string name = text.substr(i + 2, close - (i + 2));
             std::map<std::string, std::string>::iterator it = kv.find(name);
-            if (it == kv.end()) {
-                err = "missing param '" + name + "' referenced as ${" + name + "}";
-                return false;
+            if (it != kv.end()) {
+                out += it->second;
+            } else {
+                out += "0";
             }
-            out += it->second;
             i = close + 1;
         } else {
             out += text[i];
@@ -944,8 +944,9 @@ static void draw_custom_rounded_box(int x, int y, int w, int h, int r, Fl_Color 
     fl_color(border_col);
     fl_rounded_rectf(x, y, w, h, r);
     if (w > 2 && h > 2) {
+        int ir = r > 1 ? r - 1 : 1;
         fl_color(fill_col);
-        fl_rounded_rectf(x + 1, y + 1, w - 2, h - 2, r > 1 ? r - 1 : 1);
+        fl_rounded_rectf(x + 1, y + 1, w - 2, h - 2, ir);
     }
 }
 
@@ -2207,17 +2208,13 @@ void panel_registry_set_step_highlight(int step_index) {
 
 void panel_registry_set_grid_step_state(int voice, int step, int state) {
     if (step < 0 || step >= 16) return;
-    int target_grid = voice;
-    if (voice == 3) target_grid = 2;      // Voice 3 (Open Hat) shares Grid 2 with Voice 2 (Closed Hat)
-    else if (voice == 4) target_grid = 3; // Voice 4 (303 Acid Bass) is Grid 3
-
     for (std::map<std::string, RegistryEntry>::iterator it = g_registry.begin(); it != g_registry.end(); ++it) {
         panel_win_t *pw = it->second.pw;
         if (!pw || !pw->content) continue;
         int grid_idx = 0;
         for (size_t bi = 0; bi < pw->blocks.size(); ++bi) {
             if (pw->blocks[bi].kind == BK_GRID) {
-                if (grid_idx == target_grid) {
+                if (grid_idx == voice) {
                     const LayoutGridBlock &grid = pw->blocks[bi].grid;
                     for (size_t ci = 0; ci < grid.cells.size(); ++ci) {
                         const LayoutGridCell &cell = grid.cells[ci];
