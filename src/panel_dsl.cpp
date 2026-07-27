@@ -941,17 +941,12 @@ public:
     }
 
 static void draw_custom_rounded_box(int x, int y, int w, int h, int r, Fl_Color fill_col, Fl_Color border_col) {
-    fl_color(fill_col);
-    fl_rounded_rectf(x, y, w, h, r);
     fl_color(border_col);
-    fl_line(x + r, y, x + w - r, y);                 // Top edge
-    fl_line(x + r, y + h - 1, x + w - r, y + h - 1); // Bottom edge
-    fl_line(x, y + r, x, y + h - r);                 // Left edge
-    fl_line(x + w - 1, y + r, x + w - 1, y + h - r); // Right edge
-    fl_arc(x, y, r * 2, r * 2, 90, 180);             // Top-Left
-    fl_arc(x + w - r * 2, y, r * 2, r * 2, 0, 90);   // Top-Right
-    fl_arc(x, y + h - r * 2, r * 2, r * 2, 180, 270); // Bottom-Left
-    fl_arc(x + w - r * 2, y + h - r * 2, r * 2, r * 2, 270, 360); // Bottom-Right
+    fl_rounded_rectf(x, y, w, h, r);
+    if (w > 2 && h > 2) {
+        fl_color(fill_col);
+        fl_rounded_rectf(x + 1, y + 1, w - 2, h - 2, r > 1 ? r - 1 : 1);
+    }
 }
 
     void draw() override {
@@ -961,11 +956,11 @@ static void draw_custom_rounded_box(int x, int y, int w, int h, int r, Fl_Color 
 
         ReplCustomTheme theme = repl_get_active_custom_theme();
         Fl_Color card_bg = repl_rgb_to_flcolor(theme.card);
-        Fl_Color win_bg = repl_rgb_to_flcolor(theme.bg);
+        Fl_Color clear_bg = parent() ? parent()->color() : repl_rgb_to_flcolor(theme.bg);
         Fl_Color border_col = has_focus ? repl_rgb_to_flcolor(theme.focus) : repl_rgb_to_flcolor(theme.border);
 
-        // First clear bounding rect with window canvas background to prevent corner bleed
-        fl_color(win_bg);
+        // Clear bounding box with parent container color to ensure 0 corner bleed
+        fl_color(clear_bg);
         fl_rectf(bx, by, bw, bh);
 
         // 1. Flawless 100% Symmetric 4-Corner Rounded Box Rendering
@@ -1048,7 +1043,7 @@ static void draw_custom_rounded_box(int x, int y, int w, int h, int r, Fl_Color 
 
 protected:
     int handle(int event) override {
-        if (event == FL_SHORTCUT) {
+        if (event == FL_SHORTCUT || event == FL_KEYBOARD) {
             if (test_shortcut()) {
                 trigger_press();
                 if (!is_stepbutton_) {
@@ -1059,7 +1054,7 @@ protected:
                 }
                 return 1;
             }
-            return 0;
+            return 0; // Return 0 for ALL shortcut events so Fl_Button never matches labels "01".."08"
         }
 
         if (event == FL_FOCUS || event == FL_UNFOCUS) {
@@ -2212,13 +2207,17 @@ void panel_registry_set_step_highlight(int step_index) {
 
 void panel_registry_set_grid_step_state(int voice, int step, int state) {
     if (step < 0 || step >= 16) return;
+    int target_grid = voice;
+    if (voice == 3) target_grid = 2;      // Voice 3 (Open Hat) shares Grid 2 with Voice 2 (Closed Hat)
+    else if (voice == 4) target_grid = 3; // Voice 4 (303 Acid Bass) is Grid 3
+
     for (std::map<std::string, RegistryEntry>::iterator it = g_registry.begin(); it != g_registry.end(); ++it) {
         panel_win_t *pw = it->second.pw;
         if (!pw || !pw->content) continue;
         int grid_idx = 0;
         for (size_t bi = 0; bi < pw->blocks.size(); ++bi) {
             if (pw->blocks[bi].kind == BK_GRID) {
-                if (grid_idx == voice) {
+                if (grid_idx == target_grid) {
                     const LayoutGridBlock &grid = pw->blocks[bi].grid;
                     for (size_t ci = 0; ci < grid.cells.size(); ++ci) {
                         const LayoutGridCell &cell = grid.cells[ci];

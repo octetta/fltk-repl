@@ -802,15 +802,17 @@ static void panel_to_skred(const char *line, void *user_data) {
     if (cmd) {
         memcpy(cmd, line, len + 1);
         skred_command(cmd);
-        if (strstr(cmd, "/ls")) {
-            for (int v = 0; v < 5; ++v) {
-                for (int s = 0; s < 16; ++s) {
-                    panel_registry_set_grid_step_state(v, s, 0);
+        if (strstr(cmd, "/ls") || strstr(cmd, "y0") || strstr(cmd, "y1") || strstr(cmd, "y2") || strstr(cmd, "y3")) {
+            if (!s_playhead_running) {
+                for (int v = 0; v < 5; ++v) {
+                    for (int s = 0; s < 16; ++s) {
+                        panel_registry_set_grid_step_state(v, s, 0);
+                    }
                 }
-            }
-            skred_command("ys?");
-            if (user_data) {
-                print_skred_log_silent((app_state *)user_data);
+                skred_command("ys?");
+                if (user_data) {
+                    print_skred_log_silent((app_state *)user_data);
+                }
             }
         } else if (user_data) {
             print_skred_log((app_state *)user_data);
@@ -860,6 +862,21 @@ static int fltk_repl_foreign_call(const skred_foreign_call_t *call, void *user) 
 #ifndef SKRED_CONTROL_EVENT_ERROR
 #define SKRED_CONTROL_EVENT_ERROR 14
 #endif
+#ifndef SKRED_CONTROL_EVENT_PATTERN_DOWNBEAT_SWITCH
+#define SKRED_CONTROL_EVENT_PATTERN_DOWNBEAT_SWITCH 15
+#endif
+
+/* Native zero-overhead C API declarations for live drum performance pads */
+#ifdef __cplusplus
+extern "C" {
+#endif
+    int skred_trigger_voice(int voice, float velocity) __attribute__((weak));
+    int skred_set_voice_pitch(int voice, float pitch_hz_or_note) __attribute__((weak));
+    int skred_trigger_voice_pitch_velocity(int voice, float pitch_hz_or_note, float velocity) __attribute__((weak));
+    int skred_release_voice(int voice) __attribute__((weak));
+#ifdef __cplusplus
+}
+#endif
 
 static void parse_ys_dump_line(const char *line) {
     if (!line) return;
@@ -897,7 +914,10 @@ static void skred_control_event_cb(int fd, void *ud) {
         uint32_t type = events[i].type;
         if (type == SKRED_CONTROL_EVENT_PATTERN_STEP && events[i].step >= 0 && events[i].step < 16) {
             if (s_playhead_running) last_step = events[i].step;
-        } else if (type == SKRED_CONTROL_EVENT_PATTERN_CHANGE || type == SKRED_CONTROL_EVENT_PATTERN_QUEUE) {
+        } else if (type == SKRED_CONTROL_EVENT_PATTERN_DOWNBEAT_SWITCH ||
+                   type == SKRED_CONTROL_EVENT_PATTERN_CHANGE ||
+                   type == SKRED_CONTROL_EVENT_PATTERN_QUEUE) {
+            // Audio thread downbeat pattern switch boundary (Event Code 15)
             for (int v = 0; v < 5; ++v) {
                 for (int s = 0; s < 16; ++s) {
                     panel_registry_set_grid_step_state(v, s, 0);

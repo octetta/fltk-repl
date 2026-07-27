@@ -22,7 +22,7 @@ endrow
 
 row
   slider bpm 60 200 BPM "M %d" =130 ~live
-  choice division "16th-Notes 8th-Notes 4th-Notes 32nd-Rolls" "M %d %s" =16th-Notes
+  choice division "Sixteenths Eighths Quarters ThirtySeconds" "M %d %s" =Sixteenths
 endrow
 
 row
