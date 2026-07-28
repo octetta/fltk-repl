@@ -275,4 +275,26 @@ if(BUILD_TESTING)
     add_test(NAME repl_panel_step_test COMMAND repl_panel_step_test)
 endif()
 
+# ---------------------------------------------------------------------
+# KSynth (vendored C library and REPL demo target krepl)
+# ---------------------------------------------------------------------
+add_library(ksynth STATIC
+    third_party/ksynth/ksynth.c
+    third_party/ksynth/ks_api.c
+)
+target_include_directories(ksynth PUBLIC third_party/ksynth)
+
+add_executable(krepl
+    examples/ksynth/main.c
+)
+target_include_directories(krepl PRIVATE third_party/ksynth src include)
+target_compile_definitions(krepl PRIVATE
+    FLTK_REPL_VERSION="${PROJECT_VERSION}"
+)
+target_link_libraries(krepl PRIVATE replfltk pikchr ksynth ${CMAKE_DL_LIBS})
+set_target_properties(krepl PROPERTIES
+    LINKER_LANGUAGE CXX
+    OUTPUT_NAME "krepl"
+)
+
 message(STATUS "fltk-repl configured successfully!")
