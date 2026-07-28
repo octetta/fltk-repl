@@ -1842,29 +1842,25 @@ static panel_win_t *build_from_parsed(const ParsedWindow &pwin) {
     return pw;
 }
 
-panel_win_t *panel_load_string(const char *dsl_text, const char *fallback_title) {
+panel_win_t *panel_load_string_params(const char *dsl_text, const char *params, const char *fallback_title) {
     if (!dsl_text) return NULL;
+    std::string text = dsl_text;
+    std::string err;
+    if (!apply_params(text, params ? params : "", err)) {
+        report_error(std::string("panel_dsl: ") + err);
+        return NULL;
+    }
     ParsedWindow pwin;
     if (fallback_title) pwin.title = fallback_title;
-    std::string err;
-    if (!parse_dsl(dsl_text, pwin, err)) {
+    if (!parse_dsl(text, pwin, err)) {
         report_error(std::string("panel_dsl: ") + err);
         return NULL;
     }
     return build_from_parsed(pwin);
 }
 
-panel_win_t *panel_load_string_params(const char *dsl_text, const char *params, const char *fallback_title) {
-    if (!dsl_text) return NULL;
-    std::string text = dsl_text;
-    if (params) {
-        std::string err;
-        if (!apply_params(text, params, err)) {
-            report_error(std::string("panel_dsl: ") + err);
-            return NULL;
-        }
-    }
-    return panel_load_string(text.c_str(), fallback_title);
+panel_win_t *panel_load_string(const char *dsl_text, const char *fallback_title) {
+    return panel_load_string_params(dsl_text, NULL, fallback_title);
 }
 
 panel_win_t *panel_load_file(const char *path) {
