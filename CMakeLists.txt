@@ -276,18 +276,20 @@ if(BUILD_TESTING)
 endif()
 
 # ---------------------------------------------------------------------
-# KSynth (vendored C library and REPL demo target krepl)
+# KSynth (fetched at configure time, like FLTK)
 # ---------------------------------------------------------------------
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchKSynth.cmake)
+
 add_library(ksynth STATIC
-    third_party/ksynth/ksynth.c
-    third_party/ksynth/ks_api.c
+    "${KSYNTH_SOURCE_DIR}/ksynth.c"
+    "${KSYNTH_SOURCE_DIR}/ks_api.c"
 )
-target_include_directories(ksynth PUBLIC third_party/ksynth)
+target_include_directories(ksynth PUBLIC "${KSYNTH_SOURCE_DIR}")
 
 add_executable(krepl
     examples/ksynth/main.c
 )
-target_include_directories(krepl PRIVATE third_party/ksynth src include)
+target_include_directories(krepl PRIVATE "${KSYNTH_SOURCE_DIR}" src include)
 target_compile_definitions(krepl PRIVATE
     FLTK_REPL_VERSION="${PROJECT_VERSION}"
 )
