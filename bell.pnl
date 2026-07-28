@@ -1,0 +1,83 @@
+# bell.pnl — Krepl Bell Tone Grid
+#
+# Self-contained panel: the @ksynth block synthesises a bell tuned to A4
+# (inlined from bell.ks) and assigns it to slot 1.  The 4×4 button grid
+# then plays it at musically interesting intervals spanning two octaves of
+# a pentatonic / whole-tone hybrid.  A gain slider at the top lets you
+# scale the volume without stopping playback.
+#
+# Load with:
+#   panel load bell bell.pnl
+
+@ksynth
+/ --- bell.ks inlined (tuned to A4 440 Hz, ~1200ms decay) ---
+N: 52920
+T: !N
+E: e(T*(0-6.9%N))
+
+/ Bell partial frequencies (Chowning ratios: 1.0, 2.756, 5.404, 8.933)
+F: 440*(6.28318%44100)
+G: 1213*(6.28318%44100)
+J: 2378*(6.28318%44100)
+K: 3930*(6.28318%44100)
+
+/ Accumulate each partial
+P: +\(N#F)
+Q: +\(N#G)
+R: +\(N#J)
+S: +\(N#K)
+
+/ Partials with individual decay envelopes
+A: (s P)*e(T*(0-6.9%N))
+B: (s Q)*e(T*(0-10%N))
+C: (s R)*e(T*(0-15%N))
+D: (s S)*e(T*(0-22%N))
+
+/ Mix — weighted by partial strength
+W: w (A*.9)+(B*.6)+(C*.3)+(D*.15)
+
+/ Store bell in slot 1
+\A 1 W
+@end
+
+window "Bell Grid" 520 320
+
+# Gain slider: drives \V-style global scale via panel set command
+# Range 0.1 – 2.0, template fires \g <value> into krepl
+slider gain 0.1 2.0 0.05 "gain" =0.8 ~live
+
+# Row labels map to semitone offsets from A4.
+# Chosen intervals: pentatonic + tritone + octaves — two full rows each.
+#
+# Row 0  (bright high register): +19 +17 +14 +12
+# Row 1  (upper mid):            +10  +7  +5  +3
+# Row 2  (lower mid):             +2   0  -2  -5
+# Row 3  (deep low register):    -7  -10 -12 -17
+#
+# Each button fires: \P 1 +N <gain> where gain comes from the slider.
+# Because panels can't read slider state at button-press time we use a
+# fixed gain here; tune via the slider or retrigger.
+
+grid 4 4
+  button "A6+5th" "\P 1 +19"
+  button "G6"     "\P 1 +17"
+  button "E6"     "\P 1 +14"
+  button "A5"     "\P 1 +12"
+  button "F#5"    "\P 1 +10"
+  button "E5"     "\P 1 +7"
+  button "D5"     "\P 1 +5"
+  button "B4"     "\P 1 +3"
+  button "B4b"    "\P 1 +2"
+  button "A4"     "\P 1 +0"
+  button "G4"     "\P 1 -2"
+  button "E4"     "\P 1 -5"
+  button "D4"     "\P 1 -7"
+  button "B3"     "\P 1 -10"
+  button "A3"     "\P 1 -12"
+  button "E3"     "\P 1 -17"
+endgrid
+
+grid 1 2
+  button "stop all" "\q"
+  button "reload"   "panel reload bell"
+endgrid
