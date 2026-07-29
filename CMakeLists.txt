@@ -318,27 +318,31 @@ if(BUILD_TESTING)
 endif()
 
 # ---------------------------------------------------------------------
-# KSynth (fetched at configure time, like FLTK)
+# KSynth (optional)
+# Only fetch/build KSynth and the krepl target when explicitly requested
 # ---------------------------------------------------------------------
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchKSynth.cmake)
+option(KREPL_BUILD "Build the krepl KSynth demo executable" OFF)
+if(KREPL_BUILD)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchKSynth.cmake)
 
-add_library(ksynth STATIC
-    "${KSYNTH_SOURCE_DIR}/ksynth.c"
-    "${KSYNTH_SOURCE_DIR}/ks_api.c"
-)
-target_include_directories(ksynth PUBLIC "${KSYNTH_SOURCE_DIR}")
+    add_library(ksynth STATIC
+        "${KSYNTH_SOURCE_DIR}/ksynth.c"
+        "${KSYNTH_SOURCE_DIR}/ks_api.c"
+    )
+    target_include_directories(ksynth PUBLIC "${KSYNTH_SOURCE_DIR}")
 
-add_executable(krepl
-    examples/ksynth/main.c
-)
-target_include_directories(krepl PRIVATE "${KSYNTH_SOURCE_DIR}" src include)
-target_compile_definitions(krepl PRIVATE
-    FLTK_REPL_VERSION="${PROJECT_VERSION}"
-)
-target_link_libraries(krepl PRIVATE replfltk pikchr ksynth ${CMAKE_DL_LIBS})
-set_target_properties(krepl PROPERTIES
-    LINKER_LANGUAGE CXX
-    OUTPUT_NAME "krepl"
-)
+    add_executable(krepl
+        examples/ksynth/main.c
+    )
+    target_include_directories(krepl PRIVATE "${KSYNTH_SOURCE_DIR}" src include)
+    target_compile_definitions(krepl PRIVATE
+        FLTK_REPL_VERSION="${PROJECT_VERSION}"
+    )
+    target_link_libraries(krepl PRIVATE replfltk pikchr ksynth ${CMAKE_DL_LIBS})
+    set_target_properties(krepl PROPERTIES
+        LINKER_LANGUAGE CXX
+        OUTPUT_NAME "krepl"
+    )
+endif()
 
 message(STATUS "fltk-repl configured successfully!")

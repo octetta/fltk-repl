@@ -17,7 +17,7 @@ all:
 
 # Full build: build everything including skrepl, krepl and repl_demo
 all-full:
-	@cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DREPL_BUILD_DEMO=ON
+	@cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DREPL_BUILD_DEMO=ON -DKREPL_BUILD=ON
 	@cmake --build build -j
 
 # Build specific executables
@@ -26,7 +26,7 @@ skrepl:
 	@cmake --build build --target skred_repl -j
 
 krepl:
-	@cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON
+	@cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_BUILD=ON
 	@cmake --build build --target krepl -j
 
 repl_demo:
