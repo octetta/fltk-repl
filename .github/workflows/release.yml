@@ -32,6 +32,29 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install -y 7zip curl
 
+      - name: Checkout pulp sources
+        uses: actions/checkout@v4
+        with:
+          repository: octetta/pulp
+          ref: ${{ github.ref_name }}
+          path: pulp
+
+      - name: Build Skred (pulp) per-platform
+        run: |
+          set -euo pipefail
+          cd pulp
+          echo "Building pulp for runner: ${RUNNER_OS}"
+          if [ "${RUNNER_OS}" = "Linux" ]; then
+            make -C parts dist-api
+          elif [ "${RUNNER_OS}" = "macOS" ]; then
+            # build macOS universal
+            make -C parts MACOS_UNIVERSAL=1 dist-api
+          else
+            # Windows: use choco-installed zig and the windows dist target
+            pwsh -Command "choco install -y zig || true"
+            pwsh -Command "make -C parts dist-api-windows"
+          fi
+
       - name: Configure
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=OFF -DKREPL_BUILD=ON -DREPL_BUILD_DEMO=ON
@@ -54,17 +77,32 @@ jobs:
           ARCHIVE_NAME="skred-${VERSION}-maxed-${PLATFORM}"
           mkdir -p out/${ARCHIVE_NAME}
 
-          # Include built binaries and vendor if present
-          cp -r build out/${ARCHIVE_NAME}/build || true
-          if [ -d vendor ]; then cp -r vendor out/${ARCHIVE_NAME}/vendor || true; fi
+          # Prefer pulp-built dist artifact if present
+          PULP_ARTIFACT_DIR="pulp/dist/${PLATFORM}"
+          if [ -d "${PULP_ARTIFACT_DIR}" ]; then
+            echo "Using pulp dist artifacts from ${PULP_ARTIFACT_DIR}"
+            cp -r "${PULP_ARTIFACT_DIR}"/* out/${ARCHIVE_NAME}/ || true
+          else
+            echo "No pulp dist artifacts found for ${PLATFORM}; falling back to local build outputs"
+            cp -r build out/${ARCHIVE_NAME}/build || true
+            if [ -d vendor ]; then cp -r vendor out/${ARCHIVE_NAME}/vendor || true; fi
+          fi
 
           cd out
           if [ "$PLATFORM" = "windows-x86_64" ]; then
-            7z a "${ARCHIVE_NAME}.zip" "${ARCHIVE_NAME}"
+            if [ -f "${ARCHIVE_NAME}.zip" ]; then
+              echo "pulp produced ${ARCHIVE_NAME}.zip already"
+            else
+              7z a "${ARCHIVE_NAME}.zip" "${ARCHIVE_NAME}"
+            fi
             sha256sum "${ARCHIVE_NAME}.zip" | awk '{print $1}' > "${ARCHIVE_NAME}.zip.sha256"
             ls -lh "${ARCHIVE_NAME}.zip"
           else
-            tar -czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
+            if [ -f "${ARCHIVE_NAME}.tar.gz" ]; then
+              echo "pulp produced ${ARCHIVE_NAME}.tar.gz already"
+            else
+              tar -czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
+            fi
             sha256sum "${ARCHIVE_NAME}.tar.gz" | awk '{print $1}' > "${ARCHIVE_NAME}.tar.gz.sha256"
             ls -lh "${ARCHIVE_NAME}.tar.gz"
           fi
