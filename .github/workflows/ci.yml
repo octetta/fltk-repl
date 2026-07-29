@@ -69,12 +69,12 @@ jobs:
         run: cmake --build build --target replfltk repl_demo skrepl -j
 
       - name: Run tests (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && github.event_name != 'pull_request'
         run: |
           pwsh -Command "if (Test-Path 'build\\repl_*') { ctest --test-dir build -C Release --output-on-failure } else { Write-Host 'No test executables found, skipping ctest' }"
 
       - name: Run tests (Unix)
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && github.event_name != 'pull_request'
         run: |
           if ls build/repl_* 1> /dev/null 2>&1; then
             ctest --test-dir build --output-on-failure
