@@ -13,3 +13,38 @@ cmake-build-*/
 # If a user manually vendors FLTK under third_party/fltk, don't
 # accidentally commit it to this repo.
 /third_party/fltk/
+
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+/CTestTestfile.cmake
+/Testing/
+build/_deps/
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Compiled objects and libraries
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+
+# Archives and large artifacts
+*.tar.gz
+*.tgz
+
+# Common tooling
+/.cache/
+
+# Logs
+*.log
+
+# Temporary test artifacts
+*.tmp
