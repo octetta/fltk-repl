@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -79,6 +82,30 @@ jobs:
         run: |
           if [ -f release-${{ matrix.os }}-${{ github.run_id }}.tar.gz ]; then sha256sum release-${{ matrix.os }}-${{ github.run_id }}.tar.gz > release-${{ matrix.os }}-${{ github.run_id }}.tar.gz.sha256; fi
 
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-${{ matrix.os }}
+          path: |
+            release-${{ matrix.os }}-${{ github.run_id }}.tar.gz
+            release-${{ matrix.os }}-${{ github.run_id }}.tar.gz.sha256
+            release-windows-${{ github.run_id }}.zip
+            release-windows-${{ github.run_id }}.zip.sha256
+          if-no-files-found: ignore
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: ls -la artifacts || true
+
       - name: Create GitHub Release
         id: create_release
         uses: actions/create-release@v1
@@ -89,46 +116,17 @@ jobs:
           release_name: ${{ github.ref_name }}
           body: "Automated one-click release: packaged binaries (light build, SKRED disabled)."
 
-      - name: Upload release asset (Windows)
-        if: runner.os == 'Windows' && always()
-        uses: actions/upload-release-asset@v1
+      - name: Upload release assets via curl
+        run: |
+          set -euo pipefail
+          UPLOAD_URL="${{ steps.create_release.outputs.upload_url }}"
+          echo "Upload URL: $UPLOAD_URL"
+          for f in artifacts/*; do
+            [ -f "$f" ] || continue
+            name=$(basename "$f")
+            mime=$(file --mime-type -b "$f" || echo application/octet-stream)
+            echo "Uploading $name ($mime)"
+            curl -sS -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: $mime" --data-binary @"$f" "$UPLOAD_URL?name=$name"
+          done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release-windows-${{ github.run_id }}.zip
-          asset_name: release-windows-${{ github.run_id }}.zip
-          asset_content_type: application/zip
-
-      - name: Upload release asset (Windows SHA256)
-        if: runner.os == 'Windows' && always()
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release-windows-${{ github.run_id }}.zip.sha256
-          asset_name: release-windows-${{ github.run_id }}.zip.sha256
-          asset_content_type: text/plain
-
-      - name: Upload release asset (Unix)
-        if: runner.os != 'Windows' && always()
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release-${{ matrix.os }}-${{ github.run_id }}.tar.gz
-          asset_name: release-${{ matrix.os }}-${{ github.run_id }}.tar.gz
-          asset_content_type: application/gzip
-
-      - name: Upload release asset (Unix SHA256)
-        if: runner.os != 'Windows' && always()
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release-${{ matrix.os }}-${{ github.run_id }}.tar.gz.sha256
-          asset_name: release-${{ matrix.os }}-${{ github.run_id }}.tar.gz.sha256
-          asset_content_type: text/plain
