@@ -59,7 +59,8 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           mkdir -p dist
-          powershell -Command "Get-ChildItem -Path build -Recurse -Include *.exe,*.dll | ForEach-Object { Copy-Item $_.FullName -Destination 'dist' -Force }"
+          # copy any .exe/.dll from build tree, including Release subfolders
+          powershell -Command "Get-ChildItem -Path build -Recurse -File -Include *.exe,*.dll | ForEach-Object { Copy-Item $_.FullName -Destination 'dist' -Force }"
           cd dist
           powershell -Command "Compress-Archive -Path * -DestinationPath ../release-windows-${{ github.run_id }}.zip -Force"
           cd ..
@@ -68,10 +69,14 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist
+          # include macOS app bundle if present
           if [ -d "build/skrepl.app" ]; then
             cp -r build/skrepl.app dist/ || true
           fi
-          find build -type f \( -name 'skred_repl' -o -name 'krepl' -o -name 'skrepl' \) -exec cp --parents {} dist/ \; || true
+          # copy any likely binaries (krepl, skrepl, skred_repl) from build tree
+          find build -type f \( -executable -and \( -name 'krepl' -o -name 'skrepl' -o -name 'skred_repl' \) \) -exec cp --parents {} dist/ \; || true
+          # also look in Release subdirs and copy shared libs
+          find build -type f \( -path '*/Release/*' -and \( -name 'krepl' -o -name 'skrepl' -o -name '*.so' -o -name '*.dylib' \) \) -exec cp --parents {} dist/ \; || true
           tar -C dist -czf release-${{ matrix.os }}-${{ github.run_id }}.tar.gz . || true
 
       - name: Compute SHA256 (Unix)
