@@ -23,14 +23,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential pkg-config libx11-dev libpng-dev libjpeg-dev libfreetype6-dev libxft-dev libxcursor-dev git curl
 
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
-        env:
-          HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
-        run: |
-          brew update
-          brew install pkg-config libpng jpeg freetype fontconfig
-
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
