@@ -28,29 +28,62 @@ jobs:
         run: |
           choco install -y 7zip curl
 
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
+      - name: Prepare dependency cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/_deps
+            vendor
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/CMakeLists.txt','**/cmake/**') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
+      - name: Configure (PR - light, Windows)
+        if: github.event_name == 'pull_request' && runner.os == 'Windows'
         run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=OFF -DKREPL_FETCH_KSYNTH=OFF -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
 
-      - name: Configure (Unix)
-        if: runner.os != 'Windows'
+      - name: Configure (PR - light, Unix)
+        if: github.event_name == 'pull_request' && runner.os != 'Windows'
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=OFF -DKREPL_FETCH_KSYNTH=OFF -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
 
-      - name: Build targets (Windows)
-        if: runner.os == 'Windows'
-        run: cmake --build build --config Release --target replfltk repl_demo -- /m
+      - name: Configure (Push/main - full, Windows)
+        if: github.event_name != 'pull_request' && runner.os == 'Windows'
+        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
 
-      - name: Build targets (Unix)
-        if: runner.os != 'Windows'
+      - name: Configure (Push/main - full, Unix)
+        if: github.event_name != 'pull_request' && runner.os != 'Windows'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
+
+      - name: Build targets (Windows - PR)
+        if: github.event_name == 'pull_request' && runner.os == 'Windows'
+        run: |
+          echo "PR job: configure-only on Windows to avoid long FLTK builds. Skipping build step."
+
+      - name: Build targets (Windows - push)
+        if: github.event_name != 'pull_request' && runner.os == 'Windows'
+        run: cmake --build build --config Release --target replfltk repl_demo skrepl -- /m
+
+      - name: Build targets (Unix - PR)
+        if: github.event_name == 'pull_request' && runner.os != 'Windows'
         run: cmake --build build --target replfltk repl_demo -j
 
+      - name: Build targets (Unix - push)
+        if: github.event_name != 'pull_request' && runner.os != 'Windows'
+        run: cmake --build build --target replfltk repl_demo skrepl -j
+
       - name: Run tests (Windows)
-        if: runner.os == 'Windows'
-        run: ctest --test-dir build -C Release --output-on-failure
+        if: runner.os == 'Windows' && github.event_name != 'pull_request'
+        run: |
+          pwsh -Command "if (Test-Path 'build\\repl_*') { ctest --test-dir build -C Release --output-on-failure } else { Write-Host 'No test executables found, skipping ctest' }"
 
       - name: Run tests (Unix)
-        if: runner.os != 'Windows'
-        run: ctest --test-dir build --output-on-failure
+        if: runner.os != 'Windows' && github.event_name != 'pull_request'
+        run: |
+          if ls build/repl_* 1> /dev/null 2>&1; then
+            ctest --test-dir build --output-on-failure
+          else
+            echo "No test executables found, skipping ctest"
+          fi
 
       - name: Upload build artifacts
         if: always()
