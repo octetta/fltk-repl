@@ -61,6 +61,9 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           mkdir -p dist
+          # Copy executables and DLLs from Release output directories (common MSVC output paths)
+          powershell -Command "Get-ChildItem -Path build -Recurse -File | Where-Object { $_.FullName -match '\\Release\\' -and ($_.Extension -in '.exe','.dll') } | ForEach-Object { Copy-Item $_.FullName -Destination 'dist' -Force }"
+          # Also copy any other executables/dlls found under build
           powershell -Command "Get-ChildItem -Path build -Recurse -File -Include *.exe,*.dll | ForEach-Object { Copy-Item $_.FullName -Destination 'dist' -Force }"
           cd dist
           powershell -Command "Compress-Archive -Path * -DestinationPath ../release-windows-${{ github.run_id }}.zip -Force"
