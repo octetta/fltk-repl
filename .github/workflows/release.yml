@@ -69,20 +69,47 @@ jobs:
             cp -r dist/${PLATFORM}/* ../vendor/skred-${VERSION}-maxed/ || true
           fi
 
-      - name: Configure (macOS: build skrepl.app with ad-hoc signing)
-        if: runner.os == 'macOS'
+      - name: Compute SKRED SHA256 (from local vendor copy)
         env:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           TAG=${TAG}
           VERSION=${TAG#v}
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DSKRED_VERSION=${VERSION} -DFLTK_REPL_ADHOC_SIGN=ON -DKREPL_BUILD=ON -DREPL_BUILD_DEMO=ON
+          VEND_DIR="vendor/skred-${VERSION}-maxed"
+          echo "Looking for SKRED archive under ${VEND_DIR}"
+          if [ -d "${VEND_DIR}" ]; then
+            # find the first archive (tar.gz or zip)
+            file=$(find "${VEND_DIR}" -maxdepth 1 -type f \( -name "*.tar.gz" -o -name "*.zip" \) | head -n1 || true)
+            if [ -n "${file}" ]; then
+              echo "Found archive: ${file}"
+              sha=$(sha256sum "${file}" | awk '{print $1}')
+              echo "Computed SKRED_SHA256=${sha}"
+              echo "SKRED_SHA256=${sha}" >> $GITHUB_ENV
+            else
+              echo "No archive found in ${VEND_DIR}; SKRED_SHA256 not set"
+            fi
+          else
+            echo "Vendor dir ${VEND_DIR} missing; SKRED_SHA256 not set"
+          fi
+
+      - name: Configure (macOS: build skrepl.app with ad-hoc signing)
+        if: runner.os == 'macOS'
+        env:
+          TAG: ${{ github.ref_name }}
+          SKRED_SHA256: ${{ env.SKRED_SHA256 }}
+        run: |
+          set -euo pipefail
+          TAG=${TAG}
+          VERSION=${TAG#v}
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DSKRED_VERSION=${VERSION} -DFLTK_REPL_ADHOC_SIGN=ON -DKREPL_BUILD=ON -DREPL_BUILD_DEMO=ON -DSKRED_SHA256=${SKRED_SHA256}
 
       - name: Configure (other platforms)
         if: runner.os != 'macOS'
+        env:
+          SKRED_SHA256: ${{ env.SKRED_SHA256 }}
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=OFF -DKREPL_BUILD=ON -DREPL_BUILD_DEMO=ON
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=OFF -DKREPL_BUILD=ON -DREPL_BUILD_DEMO=ON -DSKRED_SHA256=${SKRED_SHA256}
 
       - name: Build
         run: |
