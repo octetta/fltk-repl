@@ -1,0 +1,22 @@
+name: Workflow Validate
+
+on:
+  push:
+    paths:
+      - '.github/workflows/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate workflow YAML files
+        run: |
+          set -euo pipefail
+          echo "Validating .github/workflows/*.yml"
+          for f in .github/workflows/*.yml; do
+            echo "Checking $f"
+            ruby -ryaml -e "YAML.load_file('$f')" || { echo "YAML parse failed for $f"; exit 1; }
+          done
