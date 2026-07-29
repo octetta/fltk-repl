@@ -34,29 +34,36 @@ jobs:
         run: |
           choco install -y 7zip curl
 
-      - name: Configure
-        run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then \
-            cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON; \
-          else \
-            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON; \
-          fi
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
 
-      - name: Build targets
-        run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then \
-            cmake --build build --config Release --target skred_repl krepl repl_demo replfltk -- /m; \
-          else \
-            cmake --build build --target skred_repl krepl repl_demo replfltk -j; \
-          fi
+      - name: Configure (Unix)
+        if: runner.os != 'Windows'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
 
-      - name: Run tests
-        run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then \
-            ctest --test-dir build -C Release --output-on-failure; \
-          else \
-            ctest --test-dir build --output-on-failure; \
-          fi
+      - name: Build targets (Windows)
+        if: runner.os == 'Windows'
+        run: cmake --build build --config Release --target skred_repl krepl repl_demo replfltk -- /m
+
+      - name: Build targets (Unix)
+        if: runner.os != 'Windows'
+        run: cmake --build build --target skred_repl krepl repl_demo replfltk -j
+
+      - name: Run tests (Windows)
+        if: runner.os == 'Windows'
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Run tests (Unix)
+        if: runner.os != 'Windows'
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ matrix.os }}
+          path: build
 
       - name: Upload build artifacts
         if: always()
