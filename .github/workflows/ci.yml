@@ -71,7 +71,7 @@ jobs:
 
       - name: Build targets (Windows - push)
         if: github.event_name != 'pull_request' && runner.os == 'Windows'
-        run: cmake --build build --config Release --target replfltk repl_demo skrepl -- /m
+        run: cmake --build build --config Release --target replfltk repl_demo skred_repl -- /m
 
       - name: Build targets (Unix - PR)
         if: github.event_name == 'pull_request' && runner.os != 'Windows'
@@ -79,7 +79,7 @@ jobs:
 
       - name: Build targets (Unix - push)
         if: github.event_name != 'pull_request' && runner.os != 'Windows'
-        run: cmake --build build --target replfltk repl_demo skrepl -j
+        run: cmake --build build --target replfltk repl_demo skred_repl -j
 
       - name: Run tests (Windows)
         if: runner.os == 'Windows' && github.event_name != 'pull_request'
