@@ -38,19 +38,19 @@ jobs:
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
-        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=OFF -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
+        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=OFF -DKREPL_FETCH_KSYNTH=OFF -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
 
       - name: Configure (Unix)
         if: runner.os != 'Windows'
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=OFF -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=OFF -DKREPL_FETCH_KSYNTH=OFF -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
 
       - name: Build targets (Windows)
         if: runner.os == 'Windows'
-        run: cmake --build build --config Release --target replfltk krepl repl_demo -- /m
+        run: cmake --build build --config Release --target replfltk repl_demo -- /m
 
       - name: Build targets (Unix)
         if: runner.os != 'Windows'
-        run: cmake --build build --target replfltk krepl repl_demo -j
+        run: cmake --build build --target replfltk repl_demo -j
 
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
