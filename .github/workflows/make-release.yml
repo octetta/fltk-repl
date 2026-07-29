@@ -43,12 +43,19 @@ jobs:
         run: |
           choco install -y cmake --installargs 'ADD_CMAKE_TO_PATH=System' || true
 
-      - name: Build skrepl and krepl
+      - name: Build skrepl and krepl (platform-aware)
         run: |
           set -e
-          # Try to build skrepl and krepl; if SKRED unavailable, krepl may still build
-          make skrepl || true
-          make krepl || true
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            echo "Configuring for Windows (x64 Release)"
+            cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_BUILD=ON -DKREPL_FETCH_KSYNTH=ON || true
+            echo "Building skred_repl and krepl (Release config)"
+            cmake --build build --config Release --target skred_repl krepl -- /m || true
+          else
+            # Unix/macOS: use Makefile targets (keeps behaviour consistent)
+            make skrepl || true
+            make krepl || true
+          fi
 
       - name: Collect deliverables (Windows)
         if: runner.os == 'Windows'
