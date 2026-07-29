@@ -115,10 +115,22 @@ jobs:
           echo "Building skred_repl (Unix)"
           cmake --build build --target skred_repl -j || true
 
+      - name: Build test executables (Windows)
+        if: runner.os == 'Windows' && github.event_name != 'pull_request'
+        run: |
+          echo "Building test executables (Windows)"
+          cmake --build build --config Release --target repl_svg_smoke repl_spectrogram_test repl_waveform_test repl_voice_topology_test repl_vector_font_test repl_panel_spring_test repl_udp_test repl_font_picker_test repl_panel_step_test -- /m || true
+
       - name: Run tests (Windows)
         if: runner.os == 'Windows' && github.event_name != 'pull_request'
         run: |
           pwsh -Command "if (Test-Path 'build\\repl_*') { ctest --test-dir build -C Release --output-on-failure } else { Write-Host 'No test executables found, skipping ctest' }"
+
+      - name: Build test executables (Unix)
+        if: runner.os != 'Windows' && github.event_name != 'pull_request'
+        run: |
+          echo "Building test executables (Unix)"
+          cmake --build build --target repl_svg_smoke repl_spectrogram_test repl_waveform_test repl_voice_topology_test repl_vector_font_test repl_panel_spring_test repl_udp_test repl_font_picker_test repl_panel_step_test -j || true
 
       - name: Run tests (Unix)
         if: runner.os != 'Windows' && github.event_name != 'pull_request'
