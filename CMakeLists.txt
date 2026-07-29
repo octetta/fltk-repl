@@ -138,12 +138,54 @@ if(SKRED_BUILD_REPL)
             message(FATAL_ERROR "Failed to download Skred from ${_url}\nCheck the release page: https://github.com/octetta/pulp/releases")
         endif()
 
+        # Optional SHA256 verification for the downloaded archive.
+        option(SKRED_VERIFY_SHA256 "Verify Skred archive SHA256 after download" ON)
+        set(SKRED_SHA256 "${SKRED_SHA256}" CACHE STRING "Expected SHA256 for Skred archive (leave empty to auto-fetch ${_url}.sha256)")
+
+        if(SKRED_VERIFY_SHA256)
+            # If no explicit checksum provided, try to fetch a .sha256 next to the release asset.
+            if(NOT SKRED_SHA256)
+                execute_process(
+                    COMMAND curl -sSfL -o "${_archive}.sha256" "${_url}.sha256"
+                    WORKING_DIRECTORY "${VENDOR_DIR}"
+                    RESULT_VARIABLE _sha_get_result
+                    ERROR_QUIET
+                )
+                if(_sha_get_result EQUAL 0)
+                    file(READ "${VENDOR_DIR}/${_archive}.sha256" _sha_contents)
+                    string(REGEX MATCH "([0-9a-fA-F]{64})" SKRED_SHA256 "${_sha_contents}")
+                endif()
+            endif()
+
+            if(SKRED_SHA256)
+                # Compute actual SHA256 using CMake builtin when available, else fall back to external sha256sum.
+                if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.17")
+                    file(SHA256 "${VENDOR_DIR}/${_archive}" _actual_sha256)
+                else()
+                    execute_process(COMMAND sha256sum "${VENDOR_DIR}/${_archive}"
+                                    OUTPUT_VARIABLE _sha_out ERROR_QUIET)
+                    string(REGEX MATCH "([0-9a-fA-F]{64})" _actual_sha256 "${_sha_out}")
+                endif()
+
+                string(TOLOWER _actual_sha256 _actual_sha256)
+                string(TOLOWER SKRED_SHA256 SKRED_SHA256)
+                if(NOT _actual_sha256 STREQUAL SKRED_SHA256)
+                    message(FATAL_ERROR "Skred archive checksum mismatch (expected ${SKRED_SHA256}, got ${_actual_sha256})")
+                else()
+                    message(STATUS "Skred archive SHA256 verified")
+                endif()
+            else()
+                message(WARNING "SKRED_VERIFY_SHA256 is ON but no SKRED_SHA256 provided and .sha256 fetch failed; continuing without checksum verification")
+            endif()
+        endif()
+
         execute_process(
             COMMAND ${CMAKE_COMMAND} -E tar xf "${_archive}"
             WORKING_DIRECTORY "${VENDOR_DIR}"
             RESULT_VARIABLE EXTRACT_RESULT
         )
         file(REMOVE "${VENDOR_DIR}/${_archive}")
+        file(REMOVE "${VENDOR_DIR}/${_archive}.sha256")
         if(NOT EXTRACT_RESULT EQUAL 0)
             message(FATAL_ERROR "Failed to extract ${_archive}")
         endif()
