@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-package:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libx11-dev libpng-dev libjpeg-dev libfreetype6-dev libxft-dev libxcursor-dev git curl
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update || true
+          brew install cmake pkg-config jpeg libpng freetype
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: choco install -y 7zip curl
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=OFF -DKREPL_BUILD=ON -DREPL_BUILD_DEMO=ON
+
+      - name: Build
+        run: |
+          cmake --build build --config Release -j
+
+      - name: Create release archive
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION=${TAG}
+          PLATFORM="unknown"
+          if [ "${RUNNER_OS}" = "Linux" ]; then PLATFORM=linux-x86_64; fi
+          if [ "${RUNNER_OS}" = "macOS" ]; then PLATFORM=macos-universal; fi
+          if [ "${RUNNER_OS}" = "Windows" ]; then PLATFORM=windows-x86_64; fi
+
+          ARCHIVE_NAME="skred-${VERSION}-maxed-${PLATFORM}"
+          mkdir -p out/${ARCHIVE_NAME}
+
+          # Include built binaries and vendor if present
+          cp -r build out/${ARCHIVE_NAME}/build || true
+          if [ -d vendor ]; then cp -r vendor out/${ARCHIVE_NAME}/vendor || true; fi
+
+          cd out
+          if [ "$PLATFORM" = "windows-x86_64" ]; then
+            7z a "${ARCHIVE_NAME}.zip" "${ARCHIVE_NAME}"
+            sha256sum "${ARCHIVE_NAME}.zip" | awk '{print $1}' > "${ARCHIVE_NAME}.zip.sha256"
+            ls -lh "${ARCHIVE_NAME}.zip"
+          else
+            tar -czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
+            sha256sum "${ARCHIVE_NAME}.tar.gz" | awk '{print $1}' > "${ARCHIVE_NAME}.tar.gz.sha256"
+            ls -lh "${ARCHIVE_NAME}.tar.gz"
+          fi
+          echo "ARTIFACT_DIR=$(pwd)" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            out/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

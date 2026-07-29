@@ -126,7 +126,10 @@ if(SKRED_BUILD_REPL)
 
         file(MAKE_DIRECTORY "${VENDOR_DIR}")
         set(_archive "skred-${SKRED_VERSION}-maxed-${_skred_platform}.${_skred_archive_extension}")
-        set(_url "https://github.com/octetta/pulp/releases/download/v${SKRED_VERSION}/${_archive}")
+        # Allow selecting the owner/repo containing Skred release assets (default: octetta/pulp)
+        set(SKRED_DOWNLOAD_OWNER "octetta" CACHE STRING "GitHub owner containing Skred release assets")
+        set(SKRED_DOWNLOAD_REPO "pulp" CACHE STRING "GitHub repo containing Skred release assets")
+        set(_url "https://github.com/${SKRED_DOWNLOAD_OWNER}/${SKRED_DOWNLOAD_REPO}/releases/download/v${SKRED_VERSION}/${_archive}")
 
         execute_process(
             COMMAND curl -fL -o "${_archive}" "${_url}"
