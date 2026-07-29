@@ -48,10 +48,20 @@ jobs:
 
       - name: Configure (Push/main - full, Windows)
         if: github.event_name != 'pull_request' && runner.os == 'Windows'
+        env:
+          SKRED_SHA256: ${{ secrets.SKRED_SHA256_WINDOWS }}
         run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
 
-      - name: Configure (Push/main - full, Unix)
-        if: github.event_name != 'pull_request' && runner.os != 'Windows'
+      - name: Configure (Push/main - full, Linux)
+        if: github.event_name != 'pull_request' && runner.os == 'Linux'
+        env:
+          SKRED_SHA256: ${{ secrets.SKRED_SHA256_LINUX }}
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
+
+      - name: Configure (Push/main - full, macOS)
+        if: github.event_name != 'pull_request' && runner.os == 'macOS'
+        env:
+          SKRED_SHA256: ${{ secrets.SKRED_SHA256_MACOS }}
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
 
       - name: Build targets (Windows - PR)
