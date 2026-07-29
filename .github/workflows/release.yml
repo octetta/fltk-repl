@@ -1,0 +1,191 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-package:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libx11-dev libpng-dev libjpeg-dev libfreetype6-dev libxft-dev libxcursor-dev git curl
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update || true
+          brew install cmake pkg-config jpeg libpng freetype
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: choco install -y 7zip curl
+
+      - name: Checkout pulp sources
+        uses: actions/checkout@v4
+        with:
+          repository: octetta/pulp
+          ref: ${{ github.ref_name }}
+          path: pulp
+
+      - name: Build Skred (pulp) per-platform
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG=${TAG}
+          VERSION=${TAG#v}
+          cd pulp
+          echo "Building pulp for runner: ${RUNNER_OS}, version=${VERSION}"
+          if [ "${RUNNER_OS}" = "Linux" ]; then
+            make -C parts dist-api
+            PLATFORM=linux-x86_64
+          elif [ "${RUNNER_OS}" = "macOS" ]; then
+            # build macOS universal
+            make -C parts MACOS_UNIVERSAL=1 dist-api
+            PLATFORM=macos-universal
+          else
+            # Windows: use choco-installed zig and the windows dist target
+            pwsh -Command "choco install -y zig || true"
+            pwsh -Command "make -C parts dist-api-windows"
+            PLATFORM=windows-x86_64
+          fi
+
+          # If pulp produced dist artifacts, copy into repo vendor so fltk-repl can use them
+          if [ -d "dist/${PLATFORM}" ]; then
+            mkdir -p ../vendor/skred-${VERSION}-maxed
+            echo "Copying pulp dist artifacts into ../vendor/skred-${VERSION}-maxed"
+            cp -r dist/${PLATFORM}/* ../vendor/skred-${VERSION}-maxed/ || true
+          fi
+
+      - name: Compute SKRED SHA256 (from local vendor copy)
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG=${TAG}
+          VERSION=${TAG#v}
+          VEND_DIR="vendor/skred-${VERSION}-maxed"
+          echo "Looking for SKRED archive under ${VEND_DIR}"
+          if [ -d "${VEND_DIR}" ]; then
+            # find the first archive (tar.gz or zip)
+            file=$(find "${VEND_DIR}" -maxdepth 1 -type f \( -name "*.tar.gz" -o -name "*.zip" \) | head -n1 || true)
+            if [ -n "${file}" ]; then
+              echo "Found archive: ${file}"
+              sha=$(sha256sum "${file}" | awk '{print $1}')
+              echo "Computed SKRED_SHA256=${sha}"
+              echo "SKRED_SHA256=${sha}" >> $GITHUB_ENV
+            else
+              echo "No archive found in ${VEND_DIR}; SKRED_SHA256 not set"
+            fi
+          else
+            echo "Vendor dir ${VEND_DIR} missing; SKRED_SHA256 not set"
+          fi
+
+      - name: Configure (macOS: build skrepl.app with ad-hoc signing)
+        if: runner.os == 'macOS'
+        env:
+          TAG: ${{ github.ref_name }}
+          SKRED_SHA256: ${{ env.SKRED_SHA256 }}
+        run: |
+          set -euo pipefail
+          TAG=${TAG}
+          VERSION=${TAG#v}
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DSKRED_VERSION=${VERSION} -DFLTK_REPL_ADHOC_SIGN=ON -DKREPL_BUILD=ON -DREPL_BUILD_DEMO=ON -DSKRED_SHA256=${SKRED_SHA256}
+
+      - name: Configure (other platforms)
+        if: runner.os != 'macOS'
+        env:
+          SKRED_SHA256: ${{ env.SKRED_SHA256 }}
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=OFF -DKREPL_BUILD=ON -DREPL_BUILD_DEMO=ON -DSKRED_SHA256=${SKRED_SHA256}
+
+      - name: Build
+        run: |
+          if [ "${RUNNER_OS}" = "macOS" ]; then
+            cmake --build build --config Release --target skred_repl -j
+          else
+            cmake --build build --config Release -j
+          fi
+
+      - name: Create release archive
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION=${TAG}
+          PLATFORM="unknown"
+          if [ "${RUNNER_OS}" = "Linux" ]; then PLATFORM=linux-x86_64; fi
+          if [ "${RUNNER_OS}" = "macOS" ]; then PLATFORM=macos-universal; fi
+          if [ "${RUNNER_OS}" = "Windows" ]; then PLATFORM=windows-x86_64; fi
+
+          ARCHIVE_NAME="skred-${VERSION}-maxed-${PLATFORM}"
+          mkdir -p out/${ARCHIVE_NAME}
+
+          # Prefer pulp-built dist artifact if present
+          PULP_ARTIFACT_DIR="pulp/dist/${PLATFORM}"
+          if [ -d "${PULP_ARTIFACT_DIR}" ]; then
+            echo "Using pulp dist artifacts from ${PULP_ARTIFACT_DIR}"
+            cp -r "${PULP_ARTIFACT_DIR}"/* out/${ARCHIVE_NAME}/ || true
+          else
+            echo "No pulp dist artifacts found for ${PLATFORM}; falling back to local build outputs"
+            cp -r build out/${ARCHIVE_NAME}/build || true
+            if [ -d vendor ]; then cp -r vendor out/${ARCHIVE_NAME}/vendor || true; fi
+          fi
+
+          cd out
+          # Ensure macOS .app is included when present
+          if [ "${PLATFORM}" = "macos-universal" ]; then
+            # If skrepl.app built by CMake, copy it into the archive dir
+            if [ -d "build/skrepl.app" ]; then
+              cp -r build/skrepl.app "${ARCHIVE_NAME}/" || true
+            elif [ -d "build/Release/skrepl.app" ]; then
+              cp -r build/Release/skrepl.app "${ARCHIVE_NAME}/" || true
+            fi
+          fi
+
+          if [ "$PLATFORM" = "windows-x86_64" ]; then
+            if [ -f "${ARCHIVE_NAME}.zip" ]; then
+              echo "pulp produced ${ARCHIVE_NAME}.zip already"
+            else
+              7z a "${ARCHIVE_NAME}.zip" "${ARCHIVE_NAME}"
+            fi
+            sha256sum "${ARCHIVE_NAME}.zip" | awk '{print $1}' > "${ARCHIVE_NAME}.zip.sha256"
+            ls -lh "${ARCHIVE_NAME}.zip"
+          else
+            if [ -f "${ARCHIVE_NAME}.tar.gz" ]; then
+              echo "pulp produced ${ARCHIVE_NAME}.tar.gz already"
+            else
+              tar -czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
+            fi
+            sha256sum "${ARCHIVE_NAME}.tar.gz" | awk '{print $1}' > "${ARCHIVE_NAME}.tar.gz.sha256"
+            ls -lh "${ARCHIVE_NAME}.tar.gz"
+          fi
+          echo "ARTIFACT_DIR=$(pwd)" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            out/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
