@@ -1,0 +1,133 @@
+name: Makefile One-Click Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for the release (required)'
+        required: true
+        default: 'v1.0.0'
+      release_name:
+        description: 'Release title (optional)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config git curl
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update || true
+          brew install cmake || true
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y cmake --installargs 'ADD_CMAKE_TO_PATH=System' || true
+
+      - name: Build skrepl and krepl
+        run: |
+          set -e
+          # Try to build skrepl and krepl; if SKRED unavailable, krepl may still build
+          make skrepl || true
+          make krepl || true
+
+      - name: Collect deliverables (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir -p dist
+          powershell -Command "Get-ChildItem -Path build -Recurse -File -Include *.exe,*.dll | ForEach-Object { Copy-Item $_.FullName -Destination 'dist' -Force }"
+          cd dist
+          powershell -Command "Compress-Archive -Path * -DestinationPath ../release-windows-${{ github.run_id }}.zip -Force"
+          cd ..
+
+      - name: Collect deliverables (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist
+          # include macOS skrepl.app if present
+          if [ -d "build/skrepl.app" ]; then
+            cp -r build/skrepl.app dist/ || true
+          fi
+          find build -type f \( -executable -and \( -name 'skrepl' -o -name 'krepl' -o -name 'skred_repl' \) \) -exec cp --parents {} dist/ \; || true
+          # also check Release subdirs
+          find build -type f \( -path '*/Release/*' -and \( -name 'skrepl' -o -name 'krepl' -o -name '*.so' -o -name '*.dylib' \) \) -exec cp --parents {} dist/ \; || true
+          tar -C dist -czf release-${{ matrix.os }}-${{ github.run_id }}.tar.gz . || true
+
+      - name: Compute SHA256 (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          if [ -f release-${{ matrix.os }}-${{ github.run_id }}.tar.gz ]; then sha256sum release-${{ matrix.os }}-${{ github.run_id }}.tar.gz > release-${{ matrix.os }}-${{ github.run_id }}.tar.gz.sha256; fi
+
+      - name: Compute SHA256 (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          powershell -Command "if (Test-Path 'release-windows-${{ github.run_id }}.zip') { $h = Get-FileHash -Algorithm SHA256 'release-windows-${{ github.run_id }}.zip'; "$($h.Hash)  release-windows-${{ github.run_id }}.zip" | Out-File -FilePath release-windows-${{ github.run_id }}.zip.sha256 -Encoding ascii }"
+
+      - name: Upload per-OS artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-${{ matrix.os }}
+          path: |
+            release-${{ matrix.os }}-${{ github.run_id }}.tar.gz
+            release-${{ matrix.os }}-${{ github.run_id }}.tar.gz.sha256
+            release-windows-${{ github.run_id }}.zip
+            release-windows-${{ github.run_id }}.zip.sha256
+          if-no-files-found: ignore
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: ls -la artifacts || true
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event.inputs.tag_name }}
+          release_name: ${{ github.event.inputs.release_name || github.event.inputs.tag_name }}
+          body: "Automated release built by Makefile (skrepl/krepl)
+
+Built on runners: ubuntu/macos/windows"
+
+      - name: Upload release assets via curl
+        run: |
+          set -euo pipefail
+          UPLOAD_URL="${{ steps.create_release.outputs.upload_url }}"
+          echo "Upload URL: $UPLOAD_URL"
+          for f in artifacts/*; do
+            [ -f "$f" ] || continue
+            name=$(basename "$f")
+            mime=$(file --mime-type -b "$f" || echo application/octet-stream)
+            echo "Uploading $name ($mime)"
+            curl -sS -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: $mime" --data-binary @"$f" "$UPLOAD_URL?name=$name"
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
