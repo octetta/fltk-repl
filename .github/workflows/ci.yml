@@ -34,7 +34,9 @@ jobs:
           path: |
             build/_deps
             vendor
-          key: ${{ runner.os }}-deps-${{ hashFiles('**/CMakeLists.txt') }}
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/CMakeLists.txt','**/cmake/**') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
 
       - name: Configure (PR - light, Windows)
         if: github.event_name == 'pull_request' && runner.os == 'Windows'
@@ -54,7 +56,8 @@ jobs:
 
       - name: Build targets (Windows - PR)
         if: github.event_name == 'pull_request' && runner.os == 'Windows'
-        run: cmake --build build --config Release --target replfltk repl_demo -- /m
+        run: |
+          echo "PR job: configure-only on Windows to avoid long FLTK builds. Skipping build step."
 
       - name: Build targets (Windows - push)
         if: github.event_name != 'pull_request' && runner.os == 'Windows'
