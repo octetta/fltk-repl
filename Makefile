@@ -2,7 +2,7 @@
 # fltk-repl Makefile
 # =============================================================================
 
-.PHONY: all clean run info help dist
+.PHONY: all clean run info help dist skrepl krepl repl_demo all-full skred-info
 
 ifeq ($(shell uname -s),Darwin)
 REPL_BIN := ./build/skrepl.app/Contents/MacOS/skrepl
@@ -10,13 +10,31 @@ else
 REPL_BIN := ./build/skrepl
 endif
 
-# Default target
+# Default target: configure and build common targets (replfltk + defaults)
 all:
 	@cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 	@cmake --build build -j
 
+# Full build: build everything including skrepl, krepl and repl_demo
+all-full:
+	@cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DREPL_BUILD_DEMO=ON
+	@cmake --build build -j
+
+# Build specific executables
+skrepl:
+	@cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON
+	@cmake --build build --target skred_repl -j
+
+krepl:
+	@cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON
+	@cmake --build build --target krepl -j
+
+repl_demo:
+	@cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DREPL_BUILD_DEMO=ON -DSKRED_BUILD_REPL=OFF
+	@cmake --build build --target repl_demo -j
+
 # Build and run
-run: all
+run: skrepl
 	@$(REPL_BIN)
 
 # Clean build directory
@@ -36,6 +54,10 @@ info:
 help:
 	@echo "Available targets:"
 	@echo "  all      - Configure and build everything (default)"
+	@echo "  all-full - Configure and build all executables (skrepl, krepl, repl_demo)"
+	@echo "  skrepl   - Build skrepl executable (requires SKRED)"
+	@echo "  krepl    - Build krepl executable"
+	@echo "  repl_demo- Build the repl_demo example"
 	@echo "  run      - Build and run skrepl"
 	@echo "  clean    - Remove build directory"
 	@echo "  info     - Show detected Skred package and configuration"
