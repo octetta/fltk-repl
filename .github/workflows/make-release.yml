@@ -83,7 +83,7 @@ jobs:
           powershell -Command "if (Test-Path 'release-windows-${{ github.run_id }}.zip') { $h = Get-FileHash -Algorithm SHA256 'release-windows-${{ github.run_id }}.zip'; "$($h.Hash)  release-windows-${{ github.run_id }}.zip" | Out-File -FilePath release-windows-${{ github.run_id }}.zip.sha256 -Encoding ascii }"
 
       - name: Upload per-OS artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.os }}
           path: |
