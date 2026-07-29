@@ -92,6 +92,8 @@ jobs:
       - name: Upload release asset (Windows)
         if: runner.os == 'Windows' && always()
         uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: release-windows-${{ github.run_id }}.zip
@@ -101,6 +103,8 @@ jobs:
       - name: Upload release asset (Windows SHA256)
         if: runner.os == 'Windows' && always()
         uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: release-windows-${{ github.run_id }}.zip.sha256
@@ -110,6 +114,8 @@ jobs:
       - name: Upload release asset (Unix)
         if: runner.os != 'Windows' && always()
         uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: release-${{ matrix.os }}-${{ github.run_id }}.tar.gz
@@ -119,6 +125,8 @@ jobs:
       - name: Upload release asset (Unix SHA256)
         if: runner.os != 'Windows' && always()
         uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: release-${{ matrix.os }}-${{ github.run_id }}.tar.gz.sha256
