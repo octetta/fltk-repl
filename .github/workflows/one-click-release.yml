@@ -39,21 +39,36 @@ jobs:
         run: |
           choco install -y cmake --installargs 'ADD_CMAKE_TO_PATH=System' || true
 
-      - name: Configure (light)
+      - name: Configure (Windows - full)
+        if: runner.os == 'Windows'
+        env:
+          SKRED_SHA256: ${{ secrets.SKRED_SHA256_WINDOWS }}
         run: |
           mkdir -p build
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=OFF -DKREPL_BUILD=OFF -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=OFF
-          else
-            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=OFF -DKREPL_BUILD=OFF -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=OFF
-          fi
+          cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_BUILD=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=OFF
+
+      - name: Configure (macOS - full)
+        if: runner.os == 'macOS'
+        env:
+          SKRED_SHA256: ${{ secrets.SKRED_SHA256_MACOS }}
+        run: |
+          mkdir -p build
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_BUILD=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=OFF
+
+      - name: Configure (Linux - full)
+        if: runner.os == 'Linux'
+        env:
+          SKRED_SHA256: ${{ secrets.SKRED_SHA256_LINUX }}
+        run: |
+          mkdir -p build
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_BUILD=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=OFF
 
       - name: Build targets
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
-            cmake --build build --config Release --target replfltk repl_demo -- /m || true
+            cmake --build build --config Release --target replfltk repl_demo skred_repl krepl -- /m || true
           else
-            cmake --build build --target replfltk repl_demo -j || true
+            cmake --build build --target replfltk repl_demo skred_repl krepl -j || true
           fi
 
       - name: Collect deliverables (Windows)
@@ -69,7 +84,11 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist
-          find build -type f \( -name 'repl_demo' -o -name 'replfltk' -o -name 'skred_repl' \) -exec cp --parents {} dist/ \; || true
+          # If macOS skrepl.app was produced, include the bundle
+          if [ -d "build/skrepl.app" ]; then
+            cp -r build/skrepl.app dist/ || true
+          fi
+          find build -type f \( -name 'repl_demo' -o -name 'replfltk' -o -name 'skred_repl' -o -name 'krepl' \) -exec cp --parents {} dist/ \; || true
           tar -C dist -czf release-${{ matrix.os }}-${{ github.run_id }}.tar.gz . || true
 
       - name: Compute SHA256 (Windows)
