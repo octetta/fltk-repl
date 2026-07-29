@@ -40,28 +40,57 @@ jobs:
           path: pulp
 
       - name: Build Skred (pulp) per-platform
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          TAG=${TAG}
+          VERSION=${TAG#v}
           cd pulp
-          echo "Building pulp for runner: ${RUNNER_OS}"
+          echo "Building pulp for runner: ${RUNNER_OS}, version=${VERSION}"
           if [ "${RUNNER_OS}" = "Linux" ]; then
             make -C parts dist-api
+            PLATFORM=linux-x86_64
           elif [ "${RUNNER_OS}" = "macOS" ]; then
             # build macOS universal
             make -C parts MACOS_UNIVERSAL=1 dist-api
+            PLATFORM=macos-universal
           else
             # Windows: use choco-installed zig and the windows dist target
             pwsh -Command "choco install -y zig || true"
             pwsh -Command "make -C parts dist-api-windows"
+            PLATFORM=windows-x86_64
           fi
 
-      - name: Configure
+          # If pulp produced dist artifacts, copy into repo vendor so fltk-repl can use them
+          if [ -d "dist/${PLATFORM}" ]; then
+            mkdir -p ../vendor/skred-${VERSION}-maxed
+            echo "Copying pulp dist artifacts into ../vendor/skred-${VERSION}-maxed"
+            cp -r dist/${PLATFORM}/* ../vendor/skred-${VERSION}-maxed/ || true
+          fi
+
+      - name: Configure (macOS: build skrepl.app with ad-hoc signing)
+        if: runner.os == 'macOS'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG=${TAG}
+          VERSION=${TAG#v}
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DSKRED_VERSION=${VERSION} -DFLTK_REPL_ADHOC_SIGN=ON -DKREPL_BUILD=ON -DREPL_BUILD_DEMO=ON
+
+      - name: Configure (other platforms)
+        if: runner.os != 'macOS'
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=OFF -DKREPL_BUILD=ON -DREPL_BUILD_DEMO=ON
 
       - name: Build
         run: |
-          cmake --build build --config Release -j
+          if [ "${RUNNER_OS}" = "macOS" ]; then
+            cmake --build build --config Release --target skred_repl -j
+          else
+            cmake --build build --config Release -j
+          fi
 
       - name: Create release archive
         env:
@@ -89,6 +118,16 @@ jobs:
           fi
 
           cd out
+          # Ensure macOS .app is included when present
+          if [ "${PLATFORM}" = "macos-universal" ]; then
+            # If skrepl.app built by CMake, copy it into the archive dir
+            if [ -d "build/skrepl.app" ]; then
+              cp -r build/skrepl.app "${ARCHIVE_NAME}/" || true
+            elif [ -d "build/Release/skrepl.app" ]; then
+              cp -r build/Release/skrepl.app "${ARCHIVE_NAME}/" || true
+            fi
+          fi
+
           if [ "$PLATFORM" = "windows-x86_64" ]; then
             if [ -f "${ARCHIVE_NAME}.zip" ]; then
               echo "pulp produced ${ARCHIVE_NAME}.zip already"
