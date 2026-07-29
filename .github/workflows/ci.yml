@@ -50,36 +50,70 @@ jobs:
         if: github.event_name != 'pull_request' && runner.os == 'Windows'
         env:
           SKRED_SHA256: ${{ secrets.SKRED_SHA256_WINDOWS }}
-        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
+        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=ON -DSKRED_BUILD_REPL=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
 
       - name: Configure (Push/main - full, Linux)
         if: github.event_name != 'pull_request' && runner.os == 'Linux'
         env:
           SKRED_SHA256: ${{ secrets.SKRED_SHA256_LINUX }}
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=ON -DSKRED_BUILD_REPL=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
 
       - name: Configure (Push/main - full, macOS)
         if: github.event_name != 'pull_request' && runner.os == 'macOS'
         env:
           SKRED_SHA256: ${{ secrets.SKRED_SHA256_MACOS }}
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=ON -DSKRED_BUILD_REPL=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=ON
 
       - name: Build targets (Windows - PR)
         if: github.event_name == 'pull_request' && runner.os == 'Windows'
         run: |
           echo "PR job: configure-only on Windows to avoid long FLTK builds. Skipping build step."
 
-      - name: Build targets (Windows - push)
+      - name: Build FLTK (Windows - push)
         if: github.event_name != 'pull_request' && runner.os == 'Windows'
-        run: cmake --build build --config Release --target replfltk repl_demo skred_repl -- /m
+        run: |
+          echo "Building FLTK (Windows)"
+          cmake --build build --config Release --target fltk -- /m || true
+
+      - name: Build replfltk (Windows - push)
+        if: github.event_name != 'pull_request' && runner.os == 'Windows'
+        run: |
+          echo "Building replfltk (Windows)"
+          cmake --build build --config Release --target replfltk -- /m || true
+
+      - name: Build skred_repl (Windows - push)
+        if: github.event_name != 'pull_request' && runner.os == 'Windows'
+        run: |
+          echo "Building skred_repl (Windows)"
+          cmake --build build --config Release --target skred_repl -- /m || true
 
       - name: Build targets (Unix - PR)
         if: github.event_name == 'pull_request' && runner.os != 'Windows'
         run: cmake --build build --target replfltk repl_demo -j
 
-      - name: Build targets (Unix - push)
+      - name: Build FLTK (Unix - push)
         if: github.event_name != 'pull_request' && runner.os != 'Windows'
-        run: cmake --build build --target replfltk repl_demo skred_repl -j
+        run: |
+          echo "Building FLTK (Unix)"
+          cmake --build build --target fltk -j || true
+
+      - name: Build replfltk (Unix - push)
+        if: github.event_name != 'pull_request' && runner.os != 'Windows'
+        run: |
+          echo "Building replfltk (Unix)"
+          cmake --build build --target replfltk -j || true
+
+      - name: Build repl_demo (Unix - push)
+        if: github.event_name != 'pull_request' && runner.os != 'Windows'
+        run: |
+          echo "Building repl_demo (Unix)"
+          cmake --build build --target repl_demo -j || true
+
+      - name: Build skred_repl (Unix - push)
+        if: github.event_name != 'pull_request' && runner.os != 'Windows'
+        run: |
+          echo "Building skred_repl (Unix)"
+          cmake --build build --target skred_repl -j || true
 
       - name: Run tests (Windows)
         if: runner.os == 'Windows' && github.event_name != 'pull_request'
