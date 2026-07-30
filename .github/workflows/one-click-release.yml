@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release tag (e.g. v0.5.4). Required for manual runs.'
+        description: 'Release tag (e.g. v0.5.6). Required for manual runs.'
         required: true
-        default: 'v0.5.4'
+        default: 'v0.5.6'
       skred_version:
         description: 'Skred version to download from octetta/pulp'
         required: true
@@ -68,20 +68,6 @@ jobs:
             libx11-dev libxft-dev libxcursor-dev libxinerama-dev libxrender-dev \
             libpng-dev libjpeg-dev libfreetype6-dev
 
-      - name: Setup MSYS2 (Windows / MinGW static)
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-curl
-            mingw-w64-x86_64-pkgconf
-            git
-
       - name: Configure & build (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -111,23 +97,24 @@ jobs:
           cmake --build build --target skred_repl -j
           test -d build/skrepl.app
 
-      - name: Configure & build (Windows MinGW)
+      - name: Configure & build (Windows MSVC)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
+        shell: pwsh
         run: |
-          set -euo pipefail
-          which cmake g++ ninja curl
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DSKRED_BUILD_REPL=ON \
-            -DSKRED_VERSION=${{ steps.ver.outputs.skred }} \
-            -DSKRED_VERIFY_SHA256=OFF \
-            -DKREPL_BUILD=OFF \
-            -DREPL_BUILD_DEMO=OFF \
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+            -DSKRED_BUILD_REPL=ON `
+            -DSKRED_VERSION=${{ steps.ver.outputs.skred }} `
+            -DSKRED_VERIFY_SHA256=OFF `
+            -DKREPL_BUILD=OFF `
+            -DREPL_BUILD_DEMO=OFF `
             -DBUILD_TESTING=OFF
-          cmake --build build --target skred_repl -j --verbose
-          ls -la build/
-          test -f build/skrepl.exe
+          cmake --build build --config Release --target skred_repl -j
+          $exe = Get-ChildItem -Path build -Recurse -Filter skrepl.exe | Select-Object -First 1
+          if (-not $exe) {
+            Get-ChildItem -Path build -Recurse -Filter *.exe | Format-Table FullName
+            throw "skrepl.exe not found after build"
+          }
+          Write-Host "Built: $($exe.FullName)"
 
       - name: Package
         if: runner.os != 'Windows'
@@ -150,19 +137,25 @@ jobs:
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
+        shell: pwsh
         run: |
-          set -euo pipefail
-          VERSION="${{ steps.ver.outputs.version }}"
-          PLATFORM="${{ matrix.platform }}"
-          NAME="skrepl-${VERSION}-${PLATFORM}"
-          mkdir -p "pkg/${NAME}"
-          cp -v build/skrepl.exe "pkg/${NAME}/"
-          cd pkg
-          powershell.exe -Command "Compress-Archive -Path '${NAME}' -DestinationPath '../${NAME}.zip' -Force"
-          cd ..
-          sha256sum "${NAME}.zip" > "${NAME}.zip.sha256"
-          ls -lh "${NAME}.zip"
+          $VERSION = "${{ steps.ver.outputs.version }}"
+          $PLATFORM = "${{ matrix.platform }}"
+          $NAME = "skrepl-$VERSION-$PLATFORM"
+          New-Item -ItemType Directory -Force -Path "pkg/$NAME" | Out-Null
+
+          $exe = Get-ChildItem -Path build -Recurse -Filter skrepl.exe | Select-Object -First 1
+          if (-not $exe) { throw "skrepl.exe not found" }
+          Copy-Item $exe.FullName "pkg/$NAME/"
+
+          # Ship any Skred DLLs if present
+          Get-ChildItem -Path vendor -Recurse -Filter "*.dll" -ErrorAction SilentlyContinue |
+            ForEach-Object { Copy-Item $_.FullName "pkg/$NAME/" -Force }
+
+          Compress-Archive -Path "pkg/$NAME" -DestinationPath "$NAME.zip" -Force
+          $hash = (Get-FileHash -Algorithm SHA256 "$NAME.zip").Hash.ToLower()
+          "$hash  $NAME.zip" | Out-File -Encoding ascii "$NAME.zip.sha256"
+          Get-Item "$NAME.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -208,13 +201,13 @@ jobs:
             artifacts/*.zip
             artifacts/*.zip.sha256
           body: |
-            Multi-platform **skrepl** binaries (statically linked Skred where applicable).
+            Multi-platform **skrepl** binaries.
 
             | Platform | File |
             |----------|------|
             | Linux x86_64 | `skrepl-*-linux-x86_64.tar.gz` |
             | macOS universal | `skrepl-*-macos-universal.tar.gz` (contains `.app`) |
-            | Windows x86_64 | `skrepl-*-windows-x86_64.zip` (MinGW, static `libapi.a`) |
+            | Windows x86_64 | `skrepl-*-windows-x86_64.zip` (MSVC) |
 
             SHA256 checksums attached.
         env:

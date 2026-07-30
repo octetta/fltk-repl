@@ -215,14 +215,24 @@ if(SKRED_BUILD_REPL)
 
     find_path(SKRED_INCLUDE_DIR NAMES skred/api.h HINTS "${SKRED_ROOT}/include" NO_DEFAULT_PATH)
 
-    # Prefer static archive. On Windows the pulp zip ships libapi.a (MinGW).
+    # Prefer static archive. Windows pulp zip may ship MSVC .lib or MinGW-named .a
+    # (libapi.a from pulp currently contains MSVC objects with __intrinsic_setjmpex).
     if(WIN32)
-        if(EXISTS "${SKRED_ROOT}/lib/libapi.a")
+        if(EXISTS "${SKRED_ROOT}/lib/api.lib")
+            set(SKRED_API_LIBRARY "${SKRED_ROOT}/lib/api.lib")
+            message(STATUS "Skred: using MSVC ${SKRED_API_LIBRARY}")
+        elseif(EXISTS "${SKRED_ROOT}/lib/libapi.lib")
+            set(SKRED_API_LIBRARY "${SKRED_ROOT}/lib/libapi.lib")
+            message(STATUS "Skred: using MSVC ${SKRED_API_LIBRARY}")
+        elseif(EXISTS "${SKRED_ROOT}/lib/libapi.a")
             set(SKRED_API_LIBRARY "${SKRED_ROOT}/lib/libapi.a")
-            message(STATUS "Skred: using static ${SKRED_API_LIBRARY}")
+            message(STATUS "Skred: using ${SKRED_API_LIBRARY}")
+            if(MSVC)
+                message(STATUS "Skred: linking libapi.a with MSVC (objects appear MSVC ABI)")
+            endif()
         elseif(EXISTS "${SKRED_ROOT}/lib/libapi.dll.a")
             set(SKRED_API_LIBRARY "${SKRED_ROOT}/lib/libapi.dll.a")
-            message(WARNING "Skred: using import lib (runtime needs libapi.dll)")
+            message(WARNING "Skred: using import lib (runtime needs DLL)")
         else()
             set(SKRED_API_LIBRARY SKRED_API_LIBRARY-NOTFOUND)
         endif()
@@ -304,6 +314,18 @@ if(SKRED_BUILD_REPL)
         endif()
     elseif(WIN32)
         set_target_properties(skred_repl PROPERTIES WIN32_EXECUTABLE FALSE)
+        # Copy any runtime DLLs next to the exe (multi-config: Release/)
+        file(GLOB _skred_win_dlls "${SKRED_ROOT}/lib/*.dll" "${SKRED_ROOT}/bin/*.dll")
+        if(_skred_win_dlls)
+            add_custom_command(TARGET skred_repl POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${_skred_win_dlls}
+                    "$<TARGET_FILE_DIR:skred_repl>"
+                COMMENT "Copying Skred DLLs next to skrepl.exe"
+                COMMAND_EXPAND_LISTS
+                VERBATIM
+            )
+        endif()
     endif()
 endif()
 
