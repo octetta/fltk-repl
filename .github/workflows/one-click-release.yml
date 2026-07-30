@@ -1,156 +1,238 @@
-name: One-Click Release
+name: One-Click Multi-Platform Release
 
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag to create/release (e.g. v0.5.2). Leave empty to use the pushed tag.'
+        required: false
+        default: ''
+      include_krepl:
+        description: 'Also build & package krepl'
+        type: boolean
+        default: true
+      include_demo:
+        description: 'Also package repl_demo'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
+env:
+  # Override via repo Variables/Secrets if you pin a different Skred
+  SKRED_VERSION: "0.54.4"
+
 jobs:
   build:
+    name: Build (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            archive_ext: tar.gz
+          - os: macos-latest
+            platform: macos-universal
+            archive_ext: tar.gz
+          - os: windows-latest
+            platform: windows-x86_64
+            archive_ext: zip
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies (Linux)
+      - name: Read version
+        id: ver
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+          # strip leading v
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using tag=$TAG version=$VERSION"
+
+      - name: Install Linux deps
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libx11-dev libpng-dev libjpeg-dev libfreetype6-dev libxft-dev libxcursor-dev git curl
+          sudo apt-get install -y \
+            build-essential cmake pkg-config git curl \
+            libx11-dev libxft-dev libxcursor-dev libxinerama-dev libxrender-dev \
+            libpng-dev libjpeg-dev libfreetype6-dev
 
-      - name: Install dependencies (macOS)
+      - name: Install macOS deps
         if: runner.os == 'macOS'
-        run: |
-          brew install cmake || true
+        run: brew install cmake || true
 
-      - name: Install dependencies (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          choco install -y cmake --installargs 'ADD_CMAKE_TO_PATH=System' || true
-
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
+      - name: Configure
+        shell: bash
         env:
-          SKRED_SHA256: ${{ matrix.os == 'macos-latest' && secrets.SKRED_SHA256_MACOS || matrix.os == 'windows-latest' && secrets.SKRED_SHA256_WINDOWS || secrets.SKRED_SHA256_LINUX }}
+          SKRED_SHA256: ${{ secrets.SKRED_SHA256 }}   # optional; leave empty to skip strict verify
         run: |
-          New-Item -ItemType Directory -Force -Path build > $null
-          try {
-            cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_BUILD=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=OFF
-          } catch {
-            Write-Host "CMake configure failed (continuing): $_"
-          }
-
-      - name: Configure (Unix)
-        if: runner.os != 'Windows'
-        env:
-          SKRED_SHA256: ${{ matrix.os == 'macos-latest' && secrets.SKRED_SHA256_MACOS || matrix.os == 'windows-latest' && secrets.SKRED_SHA256_WINDOWS || secrets.SKRED_SHA256_LINUX }}
-        run: |
-          mkdir -p build
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_BUILD=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=OFF
-
-      - name: Build skrepl/krepl (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          try {
-            cmake --build build --config Release --target skred_repl krepl -- /m
-          } catch {
-            Write-Host "Build failed (continuing): $_"
-          }
-
-      - name: Build skrepl/krepl (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          cmake --build build --target skred_repl krepl -j || true
-
-      - name: Collect deliverables (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          mkdir -p dist
-          # copy any .exe/.dll from build tree, including Release subfolders
-          powershell -Command "Get-ChildItem -Path build -Recurse -File -Include *.exe,*.dll | ForEach-Object { Copy-Item $_.FullName -Destination 'dist' -Force }"
-          cd dist
-          powershell -Command "Compress-Archive -Path * -DestinationPath ../release-windows-${{ github.run_id }}.zip -Force"
-          cd ..
-
-      - name: Collect deliverables (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          mkdir -p dist
-          # include macOS app bundle if present
-          if [ -d "build/skrepl.app" ]; then
-            cp -r build/skrepl.app dist/ || true
+          EXTRA=""
+          if [ "${{ github.event.inputs.include_krepl || 'true' }}" = "true" ]; then
+            EXTRA="$EXTRA -DKREPL_BUILD=ON -DKREPL_FETCH_KSYNTH=ON"
           fi
-          # copy any likely binaries (krepl, skrepl, skred_repl) from build tree
-          find build -type f \( -executable -and \( -name 'krepl' -o -name 'skrepl' -o -name 'skred_repl' \) \) -exec cp --parents {} dist/ \; || true
-          # also look in Release subdirs and copy shared libs
-          find build -type f \( -path '*/Release/*' -and \( -name 'krepl' -o -name 'skrepl' -o -name '*.so' -o -name '*.dylib' \) \) -exec cp --parents {} dist/ \; || true
-          tar -C dist -czf release-${{ matrix.os }}-${{ github.run_id }}.tar.gz . || true
+          if [ "${{ github.event.inputs.include_demo || 'false' }}" = "true" ]; then
+            EXTRA="$EXTRA -DREPL_BUILD_DEMO=ON"
+          fi
 
-      - name: Compute SHA256 (Unix)
-        if: runner.os != 'Windows'
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cmake -S . -B build -A x64 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DSKRED_BUILD_REPL=ON \
+              -DSKRED_VERSION=${{ env.SKRED_VERSION }} \
+              -DBUILD_TESTING=OFF \
+              $EXTRA
+          else
+            cmake -S . -B build \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DSKRED_BUILD_REPL=ON \
+              -DSKRED_VERSION=${{ env.SKRED_VERSION }} \
+              -DFLTK_REPL_ADHOC_SIGN=ON \
+              -DBUILD_TESTING=OFF \
+              $EXTRA
+          fi
+
+      - name: Build
+        shell: bash
         run: |
-          if [ -f release-${{ matrix.os }}-${{ github.run_id }}.tar.gz ]; then sha256sum release-${{ matrix.os }}-${{ github.run_id }}.tar.gz > release-${{ matrix.os }}-${{ github.run_id }}.tar.gz.sha256; fi
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cmake --build build --config Release --target skred_repl -j
+            if [ "${{ github.event.inputs.include_krepl || 'true' }}" = "true" ]; then
+              cmake --build build --config Release --target krepl -j || echo "krepl build skipped/failed"
+            fi
+          else
+            cmake --build build --target skred_repl -j
+            if [ "${{ github.event.inputs.include_krepl || 'true' }}" = "true" ]; then
+              cmake --build build --target krepl -j || true
+            fi
+            if [ "${{ github.event.inputs.include_demo || 'false' }}" = "true" ]; then
+              cmake --build build --target repl_demo -j || true
+            fi
+          fi
 
-      - name: Compute SHA256 (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          powershell -Command "if (Test-Path 'release-windows-${{ github.run_id }}.zip') { $h = Get-FileHash -Algorithm SHA256 'release-windows-${{ github.run_id }}.zip'; "$($h.Hash)  release-windows-${{ github.run_id }}.zip" | Out-File -FilePath release-windows-${{ github.run_id }}.zip.sha256 -Encoding ascii }"
-
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ matrix.os }}
-          path: |
-            release-${{ matrix.os }}-${{ github.run_id }}.tar.gz
-            release-${{ matrix.os }}-${{ github.run_id }}.tar.gz.sha256
-            release-windows-${{ github.run_id }}.zip
-            release-windows-${{ github.run_id }}.zip.sha256
-          if-no-files-found: ignore
-
-  publish:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v3
-        with:
-          path: artifacts
-
-      - name: List artifacts
-        run: ls -la artifacts || true
-
-      - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref_name }}
-          release_name: ${{ github.ref_name }}
-          body: "Automated one-click release: packaged skrepl/krepl binaries."
-
-      - name: Upload release assets via curl
+      - name: Package
+        shell: bash
         run: |
           set -euo pipefail
-          UPLOAD_URL="${{ steps.create_release.outputs.upload_url }}"
-          echo "Upload URL: $UPLOAD_URL"
-          for f in artifacts/*; do
-            [ -f "$f" ] || continue
-            name=$(basename "$f")
-            mime=$(file --mime-type -b "$f" || echo application/octet-stream)
-            echo "Uploading $name ($mime)"
-            curl -sS -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: $mime" --data-binary @"$f" "$UPLOAD_URL?name=$name"
-          done
+          VERSION="${{ steps.ver.outputs.version }}"
+          PLATFORM="${{ matrix.platform }}"
+          ARCHIVE="skrepl-${VERSION}-${PLATFORM}"
+          mkdir -p "pkg/${ARCHIVE}"
+
+          case "${{ runner.os }}" in
+            Linux)
+              # binary + any runtime libs that ended up next to it
+              cp -v build/skrepl "pkg/${ARCHIVE}/" || cp -v build/Release/skrepl "pkg/${ARCHIVE}/"
+              # optional
+              [ -f build/krepl ] && cp -v build/krepl "pkg/${ARCHIVE}/" || true
+              [ -f build/repl_demo ] && cp -v build/repl_demo "pkg/${ARCHIVE}/" || true
+              # copy any .so that live under vendor (Skred)
+              find vendor -name '*.so*' -exec cp -v {} "pkg/${ARCHIVE}/" \; 2>/dev/null || true
+              ;;
+            macOS)
+              if [ -d build/skrepl.app ]; then
+                cp -a build/skrepl.app "pkg/${ARCHIVE}/"
+              elif [ -d build/Release/skrepl.app ]; then
+                cp -a build/Release/skrepl.app "pkg/${ARCHIVE}/"
+              else
+                echo "ERROR: skrepl.app not found"
+                find build -name 'skrepl*' -print
+                exit 1
+              fi
+              [ -f build/krepl ] && cp -v build/krepl "pkg/${ARCHIVE}/" || true
+              [ -f build/repl_demo ] && cp -v build/repl_demo "pkg/${ARCHIVE}/" || true
+              ;;
+            Windows)
+              # MSVC puts binaries under build/Release or build/*/Release
+              find build -type f \( -name 'skrepl.exe' -o -name 'krepl.exe' -o -name 'repl_demo.exe' \) \
+                -exec cp -v {} "pkg/${ARCHIVE}/" \;
+              # Skred DLLs
+              find vendor -name '*.dll' -exec cp -v {} "pkg/${ARCHIVE}/" \; 2>/dev/null || true
+              find build -name '*.dll' -path '*/Release/*' -exec cp -v {} "pkg/${ARCHIVE}/" \; 2>/dev/null || true
+              ;;
+          esac
+
+          ls -laR "pkg/${ARCHIVE}"
+
+          cd pkg
+          if [ "${{ matrix.archive_ext }}" = "zip" ]; then
+            7z a -tzip "../${ARCHIVE}.zip" "${ARCHIVE}"
+            ARCHIVE_FILE="${ARCHIVE}.zip"
+          else
+            tar -czf "../${ARCHIVE}.tar.gz" "${ARCHIVE}"
+            ARCHIVE_FILE="${ARCHIVE}.tar.gz"
+          fi
+          cd ..
+
+          # checksum
+          if command -v sha256sum >/dev/null; then
+            sha256sum "${ARCHIVE_FILE}" > "${ARCHIVE_FILE}.sha256"
+          else
+            # Windows / macOS fallback
+            shasum -a 256 "${ARCHIVE_FILE}" > "${ARCHIVE_FILE}.sha256" || \
+              powershell -Command "(Get-FileHash -Algorithm SHA256 '${ARCHIVE_FILE}').Hash + '  ${ARCHIVE_FILE}' | Out-File -Encoding ascii '${ARCHIVE_FILE}.sha256'"
+          fi
+
+          echo "ARTIFACT=${ARCHIVE_FILE}" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: |
+            skrepl-*.tar.gz
+            skrepl-*.tar.gz.sha256
+            skrepl-*.zip
+            skrepl-*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true   # flattens into one directory
+
+      - name: List what we got
+        run: find artifacts -type f | sort
+
+      - name: Create / update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          body: |
+            Multi-platform binary packages for **skrepl** (and optionally krepl).
+
+            | Platform | Archive |
+            |----------|---------|
+            | Linux x86_64 | `skrepl-*-linux-x86_64.tar.gz` |
+            | macOS universal | `skrepl-*-macos-universal.tar.gz` (contains `.app`) |
+            | Windows x86_64 | `skrepl-*-windows-x86_64.zip` |
+
+            SHA256 checksums are attached.
+          files: artifacts/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
