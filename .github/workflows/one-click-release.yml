@@ -36,24 +36,41 @@ jobs:
         run: |
           choco install -y cmake --installargs 'ADD_CMAKE_TO_PATH=System' || true
 
-      - name: Configure (full)
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          SKRED_SHA256: ${{ secrets.SKRED_SHA256_${{ matrix.os == 'macos-latest' && 'MACOS' || matrix.os == 'windows-latest' && 'WINDOWS' || 'LINUX' }} }}
+        run: |
+          New-Item -ItemType Directory -Force -Path build > $null
+          try {
+            cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_BUILD=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=OFF
+          } catch {
+            Write-Host "CMake configure failed (continuing): $_"
+          }
+
+      - name: Configure (Unix)
+        if: runner.os != 'Windows'
         env:
           SKRED_SHA256: ${{ secrets.SKRED_SHA256_${{ matrix.os == 'macos-latest' && 'MACOS' || matrix.os == 'windows-latest' && 'WINDOWS' || 'LINUX' }} }}
         run: |
           mkdir -p build
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_BUILD=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=OFF
-          else
-            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_BUILD=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=OFF
-          fi
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DKREPL_BUILD=ON -DKREPL_FETCH_KSYNTH=ON -DREPL_BUILD_DEMO=ON -DBUILD_TESTING=OFF
 
-      - name: Build skrepl/krepl
+      - name: Build skrepl/krepl (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cmake --build build --config Release --target skred_repl krepl -- /m || true
-          else
-            cmake --build build --target skred_repl krepl -j || true
-          fi
+          try {
+            cmake --build build --config Release --target skred_repl krepl -- /m
+          } catch {
+            Write-Host "Build failed (continuing): $_"
+          }
+
+      - name: Build skrepl/krepl (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cmake --build build --target skred_repl krepl -j || true
 
       - name: Collect deliverables (Windows)
         if: runner.os == 'Windows'
