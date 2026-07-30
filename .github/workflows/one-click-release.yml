@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release tag (e.g. v0.5.6). Required for manual runs.'
+        description: 'Release tag (e.g. v0.5.7). Required for manual runs.'
         required: true
-        default: 'v0.5.6'
+        default: 'v0.5.7'
       skred_version:
         description: 'Skred version to download from octetta/pulp'
         required: true
@@ -28,13 +28,10 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux-x86_64
-            archive_ext: tar.gz
           - os: macos-latest
             platform: macos-universal
-            archive_ext: tar.gz
           - os: windows-latest
             platform: windows-x86_64
-            archive_ext: zip
 
     defaults:
       run:
@@ -68,6 +65,17 @@ jobs:
             libx11-dev libxft-dev libxcursor-dev libxinerama-dev libxrender-dev \
             libpng-dev libjpeg-dev libfreetype6-dev
 
+      - name: Setup MSVC + Ninja (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Ninja (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install ninja -y
+
       - name: Configure & build (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -99,22 +107,11 @@ jobs:
 
       - name: Configure & build (Windows MSVC)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: cmd
         run: |
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
-            -DSKRED_BUILD_REPL=ON `
-            -DSKRED_VERSION=${{ steps.ver.outputs.skred }} `
-            -DSKRED_VERIFY_SHA256=OFF `
-            -DKREPL_BUILD=OFF `
-            -DREPL_BUILD_DEMO=OFF `
-            -DBUILD_TESTING=OFF
-          cmake --build build --config Release --target skred_repl -j
-          $exe = Get-ChildItem -Path build -Recurse -Filter skrepl.exe | Select-Object -First 1
-          if (-not $exe) {
-            Get-ChildItem -Path build -Recurse -Filter *.exe | Format-Table FullName
-            throw "skrepl.exe not found after build"
-          }
-          Write-Host "Built: $($exe.FullName)"
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DSKRED_VERSION=${{ steps.ver.outputs.skred }} -DSKRED_VERIFY_SHA256=OFF -DKREPL_BUILD=OFF -DREPL_BUILD_DEMO=OFF -DBUILD_TESTING=OFF
+          cmake --build build --target skred_repl -j
+          dir /s /b build\skrepl.exe
 
       - name: Package
         if: runner.os != 'Windows'
@@ -124,13 +121,11 @@ jobs:
           PLATFORM="${{ matrix.platform }}"
           NAME="skrepl-${VERSION}-${PLATFORM}"
           mkdir -p "pkg/${NAME}"
-
           if [ "${{ runner.os }}" = "macOS" ]; then
             cp -a build/skrepl.app "pkg/${NAME}/"
           else
             cp -v build/skrepl "pkg/${NAME}/"
           fi
-
           tar -C pkg -czf "${NAME}.tar.gz" "${NAME}"
           sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256"
           ls -lh "${NAME}.tar.gz"
@@ -143,15 +138,11 @@ jobs:
           $PLATFORM = "${{ matrix.platform }}"
           $NAME = "skrepl-$VERSION-$PLATFORM"
           New-Item -ItemType Directory -Force -Path "pkg/$NAME" | Out-Null
-
           $exe = Get-ChildItem -Path build -Recurse -Filter skrepl.exe | Select-Object -First 1
           if (-not $exe) { throw "skrepl.exe not found" }
           Copy-Item $exe.FullName "pkg/$NAME/"
-
-          # Ship any Skred DLLs if present
           Get-ChildItem -Path vendor -Recurse -Filter "*.dll" -ErrorAction SilentlyContinue |
             ForEach-Object { Copy-Item $_.FullName "pkg/$NAME/" -Force }
-
           Compress-Archive -Path "pkg/$NAME" -DestinationPath "$NAME.zip" -Force
           $hash = (Get-FileHash -Algorithm SHA256 "$NAME.zip").Hash.ToLower()
           "$hash  $NAME.zip" | Out-File -Encoding ascii "$NAME.zip.sha256"
@@ -206,7 +197,7 @@ jobs:
             | Platform | File |
             |----------|------|
             | Linux x86_64 | `skrepl-*-linux-x86_64.tar.gz` |
-            | macOS universal | `skrepl-*-macos-universal.tar.gz` (contains `.app`) |
+            | macOS universal | `skrepl-*-macos-universal.tar.gz` |
             | Windows x86_64 | `skrepl-*-windows-x86_64.zip` (MSVC) |
 
             SHA256 checksums attached.

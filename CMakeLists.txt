@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" FLTK_REPL_VERSION
      LIMIT_COUNT 1)
-if(NOT FLTK_REPL_VERSION MATCHES "^[0-9]+\.[0-9]+\.[0-9]+$")
+if(NOT FLTK_REPL_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
     message(FATAL_ERROR "VERSION must contain a semantic version (found '${FLTK_REPL_VERSION}')")
 endif()
 project(fltk_repl VERSION ${FLTK_REPL_VERSION} LANGUAGES C CXX)
@@ -19,9 +19,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 
-# ---------------------------------------------------------------------
-# FLTK
-# ---------------------------------------------------------------------
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchFLTK.cmake)
 
 if(NOT FLTK_VERSION OR FLTK_VERSION VERSION_LESS "1.4.0")
@@ -35,18 +32,12 @@ endif()
 set(REPL_FLTK_TARGET fltk::images)
 message(STATUS "fltk-repl: FLTK ${FLTK_VERSION} with SVG support")
 
-# ---------------------------------------------------------------------
-# Pikchr (vendored generated C source)
-# ---------------------------------------------------------------------
 add_library(pikchr STATIC third_party/pikchr/pikchr.c)
 target_include_directories(pikchr PUBLIC third_party/pikchr)
 if(NOT MSVC)
     target_link_libraries(pikchr PUBLIC m)
 endif()
 
-# ---------------------------------------------------------------------
-# REPL library
-# ---------------------------------------------------------------------
 add_library(replfltk
     src/repl_api.cpp src/TerminalView.cpp src/TerminalView.h
     src/Theme.cpp src/Theme.h
@@ -77,14 +68,12 @@ if(APPLE)
     target_link_libraries(replfltk PUBLIC "-framework Cocoa")
 endif()
 
-# Detect top-level vs vendored sub-project build
 if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
     set(FLTK_REPL_IS_TOP_LEVEL ON)
 else()
     set(FLTK_REPL_IS_TOP_LEVEL OFF)
 endif()
 
-# Standalone generic C REPL demo target
 option(REPL_BUILD_DEMO "Build REPL demo executable" ${FLTK_REPL_IS_TOP_LEVEL})
 if(REPL_BUILD_DEMO)
     add_executable(repl_demo examples/demo/main.c)
@@ -96,9 +85,6 @@ if(REPL_BUILD_DEMO)
     target_link_libraries(repl_pipe_demo PRIVATE replfltk)
 endif()
 
-# ---------------------------------------------------------------------
-# Platform detection
-# ---------------------------------------------------------------------
 if(WIN32)
     set(_skred_platform "windows-x86_64")
     set(_skred_archive_extension "zip")
@@ -110,9 +96,6 @@ else()
     set(_skred_archive_extension "tar.gz")
 endif()
 
-# ---------------------------------------------------------------------
-# Download Skred release into vendor/
-# ---------------------------------------------------------------------
 option(SKRED_BUILD_REPL "Build Skred REPL" ${FLTK_REPL_IS_TOP_LEVEL})
 set(SKRED_VERSION "0.54.4" CACHE STRING "Skred version to use")
 set(SKRED_ROOT "" CACHE PATH "Path to skred package (auto-filled)")
@@ -129,54 +112,31 @@ if(SKRED_BUILD_REPL)
         set(SKRED_DOWNLOAD_OWNER "octetta" CACHE STRING "GitHub owner containing Skred release assets")
         set(SKRED_DOWNLOAD_REPO "pulp" CACHE STRING "GitHub repo containing Skred release assets")
         set(_url "https://github.com/${SKRED_DOWNLOAD_OWNER}/${SKRED_DOWNLOAD_REPO}/releases/download/v${SKRED_VERSION}/${_archive}")
+        set(_archive_path "${VENDOR_DIR}/${_archive}")
 
-        execute_process(
-            COMMAND curl -fL -o "${_archive}" "${_url}"
-            WORKING_DIRECTORY "${VENDOR_DIR}"
-            RESULT_VARIABLE DOWNLOAD_RESULT
+        # Cross-platform download (no external curl binary required)
+        file(DOWNLOAD "${_url}" "${_archive_path}"
+            STATUS _dl_status
+            SHOW_PROGRESS
+            TLS_VERIFY ON
         )
-
-        if(NOT DOWNLOAD_RESULT EQUAL 0)
-            message(FATAL_ERROR "Failed to download Skred from ${_url}\nCheck the release page: https://github.com/octetta/pulp/releases")
+        list(GET _dl_status 0 _dl_code)
+        if(NOT _dl_code EQUAL 0)
+            list(GET _dl_status 1 _dl_msg)
+            message(FATAL_ERROR "Failed to download Skred from ${_url}: ${_dl_msg}")
         endif()
 
         option(SKRED_VERIFY_SHA256 "Verify Skred archive SHA256 after download" ON)
-        set(SKRED_SHA256 "${SKRED_SHA256}" CACHE STRING "Expected SHA256 for Skred archive (leave empty to auto-fetch ${_url}.sha256)")
+        set(SKRED_SHA256 "${SKRED_SHA256}" CACHE STRING "Expected SHA256 for Skred archive")
 
-        if(SKRED_VERIFY_SHA256)
-            if(NOT SKRED_SHA256)
-                execute_process(
-                    COMMAND curl -sSfL -o "${_archive}.sha256" "${_url}.sha256"
-                    WORKING_DIRECTORY "${VENDOR_DIR}"
-                    RESULT_VARIABLE _sha_get_result
-                    ERROR_QUIET
-                )
-                if(_sha_get_result EQUAL 0)
-                    file(READ "${VENDOR_DIR}/${_archive}.sha256" _sha_contents)
-                    string(REGEX MATCH "([0-9a-fA-F]{64})" SKRED_SHA256 "${_sha_contents}")
-                endif()
+        if(SKRED_VERIFY_SHA256 AND SKRED_SHA256)
+            file(SHA256 "${_archive_path}" _actual_sha256)
+            string(TOLOWER "${_actual_sha256}" _actual_sha256)
+            string(TOLOWER "${SKRED_SHA256}" _expect_sha256)
+            if(NOT _actual_sha256 STREQUAL _expect_sha256)
+                message(FATAL_ERROR "Skred archive checksum mismatch (expected ${_expect_sha256}, got ${_actual_sha256})")
             endif()
-
-            if(SKRED_SHA256)
-                if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.17")
-                    file(SHA256 "${VENDOR_DIR}/${_archive}" _actual_sha256)
-                else()
-                    execute_process(COMMAND sha256sum "${VENDOR_DIR}/${_archive}"
-                                    OUTPUT_VARIABLE _sha_out ERROR_QUIET)
-                    string(REGEX MATCH "([0-9a-fA-F]{64})" _actual_sha256 "${_sha_out}")
-                endif()
-
-                string(TOLOWER "${_actual_sha256}" _actual_sha256)
-                string(TOLOWER "${SKRED_SHA256}" SKRED_SHA256)
-
-                if(NOT _actual_sha256 STREQUAL SKRED_SHA256)
-                    message(FATAL_ERROR "Skred archive checksum mismatch (expected ${SKRED_SHA256}, got ${_actual_sha256})")
-                else()
-                    message(STATUS "Skred archive SHA256 verified")
-                endif()
-            else()
-                message(WARNING "SKRED_VERIFY_SHA256 is ON but no SKRED_SHA256 provided and .sha256 fetch failed; continuing without checksum verification")
-            endif()
+            message(STATUS "Skred archive SHA256 verified")
         endif()
 
         execute_process(
@@ -184,14 +144,12 @@ if(SKRED_BUILD_REPL)
             WORKING_DIRECTORY "${VENDOR_DIR}"
             RESULT_VARIABLE EXTRACT_RESULT
         )
-        file(REMOVE "${VENDOR_DIR}/${_archive}")
-        file(REMOVE "${VENDOR_DIR}/${_archive}.sha256")
+        file(REMOVE "${_archive_path}")
         if(NOT EXTRACT_RESULT EQUAL 0)
             message(FATAL_ERROR "Failed to extract ${_archive}")
         endif()
     endif()
 
-    # Zip top-level dir can differ by platform (esp. Windows).
     if(EXISTS "${SKRED_DIR}/include/skred/api.h")
         set(SKRED_ROOT "${SKRED_DIR}")
     else()
@@ -207,34 +165,27 @@ if(SKRED_BUILD_REPL)
         endforeach()
         if(NOT SKRED_ROOT)
             message(FATAL_ERROR
-                "Could not find skred/api.h under ${VENDOR_DIR} after download. "
-                "Expected something like ${SKRED_DIR}/include/skred/api.h")
+                "Could not find skred/api.h under ${VENDOR_DIR} after download.")
         endif()
     endif()
     message(STATUS "Using downloaded Skred: ${SKRED_ROOT}")
 
     find_path(SKRED_INCLUDE_DIR NAMES skred/api.h HINTS "${SKRED_ROOT}/include" NO_DEFAULT_PATH)
 
-    # Prefer static archive. Windows pulp zip may ship MSVC .lib or MinGW-named .a
-    # (libapi.a from pulp currently contains MSVC objects with __intrinsic_setjmpex).
     if(WIN32)
         if(EXISTS "${SKRED_ROOT}/lib/api.lib")
             set(SKRED_API_LIBRARY "${SKRED_ROOT}/lib/api.lib")
-            message(STATUS "Skred: using MSVC ${SKRED_API_LIBRARY}")
         elseif(EXISTS "${SKRED_ROOT}/lib/libapi.lib")
             set(SKRED_API_LIBRARY "${SKRED_ROOT}/lib/libapi.lib")
-            message(STATUS "Skred: using MSVC ${SKRED_API_LIBRARY}")
         elseif(EXISTS "${SKRED_ROOT}/lib/libapi.a")
             set(SKRED_API_LIBRARY "${SKRED_ROOT}/lib/libapi.a")
-            message(STATUS "Skred: using ${SKRED_API_LIBRARY}")
-            if(MSVC)
-                message(STATUS "Skred: linking libapi.a with MSVC (objects appear MSVC ABI)")
-            endif()
         elseif(EXISTS "${SKRED_ROOT}/lib/libapi.dll.a")
             set(SKRED_API_LIBRARY "${SKRED_ROOT}/lib/libapi.dll.a")
-            message(WARNING "Skred: using import lib (runtime needs DLL)")
         else()
             set(SKRED_API_LIBRARY SKRED_API_LIBRARY-NOTFOUND)
+        endif()
+        if(SKRED_API_LIBRARY)
+            message(STATUS "Skred: using ${SKRED_API_LIBRARY}")
         endif()
     else()
         find_library(SKRED_API_LIBRARY NAMES api
@@ -314,7 +265,6 @@ if(SKRED_BUILD_REPL)
         endif()
     elseif(WIN32)
         set_target_properties(skred_repl PROPERTIES WIN32_EXECUTABLE FALSE)
-        # Copy any runtime DLLs next to the exe (multi-config: Release/)
         file(GLOB _skred_win_dlls "${SKRED_ROOT}/lib/*.dll" "${SKRED_ROOT}/bin/*.dll")
         if(_skred_win_dlls)
             add_custom_command(TARGET skred_repl POST_BUILD
@@ -363,12 +313,10 @@ if(BUILD_TESTING)
     add_executable(repl_udp_test tests/udp_test.cpp)
     target_include_directories(repl_udp_test PRIVATE src include)
     target_link_libraries(repl_udp_test PRIVATE replfltk)
-    # add_test(NAME repl_udp_test COMMAND repl_udp_test)  # temporarily disabled: flaky in CI
 
     add_executable(repl_font_picker_test tests/font_picker_test.cpp)
     target_include_directories(repl_font_picker_test PRIVATE src include)
     target_link_libraries(repl_font_picker_test PRIVATE replfltk)
-    # add_test(NAME repl_font_picker_test COMMAND repl_font_picker_test)  # temporarily disabled: flaky in CI
 
     add_executable(repl_panel_step_test tests/panel_step_test.cpp)
     target_include_directories(repl_panel_step_test PRIVATE src include)
@@ -376,9 +324,6 @@ if(BUILD_TESTING)
     add_test(NAME repl_panel_step_test COMMAND repl_panel_step_test)
 endif()
 
-# ---------------------------------------------------------------------
-# KSynth (optional)
-# ---------------------------------------------------------------------
 option(KREPL_BUILD "Build the krepl KSynth demo executable" OFF)
 if(KREPL_BUILD)
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchKSynth.cmake)
@@ -389,18 +334,11 @@ if(KREPL_BUILD)
     )
     target_include_directories(ksynth PUBLIC "${KSYNTH_SOURCE_DIR}")
 
-    add_executable(krepl
-        examples/ksynth/main.c
-    )
+    add_executable(krepl examples/ksynth/main.c)
     target_include_directories(krepl PRIVATE "${KSYNTH_SOURCE_DIR}" src include)
-    target_compile_definitions(krepl PRIVATE
-        FLTK_REPL_VERSION="${PROJECT_VERSION}"
-    )
+    target_compile_definitions(krepl PRIVATE FLTK_REPL_VERSION="${PROJECT_VERSION}")
     target_link_libraries(krepl PRIVATE replfltk pikchr ksynth ${CMAKE_DL_LIBS})
-    set_target_properties(krepl PROPERTIES
-        LINKER_LANGUAGE CXX
-        OUTPUT_NAME "krepl"
-    )
+    set_target_properties(krepl PROPERTIES LINKER_LANGUAGE CXX OUTPUT_NAME "krepl")
 endif()
 
 message(STATUS "fltk-repl configured successfully!")
