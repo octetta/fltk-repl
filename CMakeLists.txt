@@ -170,8 +170,9 @@ if(SKRED_BUILD_REPL)
                     string(REGEX MATCH "([0-9a-fA-F]{64})" _actual_sha256 "${_sha_out}")
                 endif()
 
-                string(TOLOWER _actual_sha256 _actual_sha256)
-                string(TOLOWER SKRED_SHA256 SKRED_SHA256)
+                string(TOLOWER "${_actual_sha256}" _actual_sha256)
+                string(TOLOWER "${SKRED_SHA256}" SKRED_SHA256)
+
                 if(NOT _actual_sha256 STREQUAL SKRED_SHA256)
                     message(FATAL_ERROR "Skred archive checksum mismatch (expected ${SKRED_SHA256}, got ${_actual_sha256})")
                 else()
@@ -198,10 +199,25 @@ if(SKRED_BUILD_REPL)
     message(STATUS "Using downloaded Skred: ${SKRED_ROOT}")
 
     find_path(SKRED_INCLUDE_DIR NAMES skred/api.h HINTS "${SKRED_ROOT}/include" NO_DEFAULT_PATH)
-    find_library(SKRED_API_LIBRARY NAMES api HINTS "${SKRED_ROOT}/lib64" "${SKRED_ROOT}/lib" NO_DEFAULT_PATH)
+
+    # Prefer static archive. On Windows the pulp zip ships libapi.a (MinGW).
+    if(WIN32)
+        if(EXISTS "${SKRED_ROOT}/lib/libapi.a")
+            set(SKRED_API_LIBRARY "${SKRED_ROOT}/lib/libapi.a")
+            message(STATUS "Skred: using static ${SKRED_API_LIBRARY}")
+        elseif(EXISTS "${SKRED_ROOT}/lib/libapi.dll.a")
+            set(SKRED_API_LIBRARY "${SKRED_ROOT}/lib/libapi.dll.a")
+            message(WARNING "Skred: using import lib (runtime needs libapi.dll)")
+        else()
+            set(SKRED_API_LIBRARY SKRED_API_LIBRARY-NOTFOUND)
+        endif()
+    else()
+        find_library(SKRED_API_LIBRARY NAMES api
+            HINTS "${SKRED_ROOT}/lib64" "${SKRED_ROOT}/lib" NO_DEFAULT_PATH)
+    endif()
 
     if(NOT SKRED_INCLUDE_DIR OR NOT SKRED_API_LIBRARY)
-        message(FATAL_ERROR "Downloaded Skred is incomplete")
+        message(FATAL_ERROR "Downloaded Skred is incomplete (include=${SKRED_INCLUDE_DIR} lib=${SKRED_API_LIBRARY})")
     endif()
 
     add_executable(skred_repl
@@ -218,6 +234,9 @@ if(SKRED_BUILD_REPL)
         FLTK_REPL_FLTK_VERSION="${FLTK_VERSION}"
         FLTK_REPL_PIKCHR_VERSION="${PIKCHR_VERSION}")
     target_link_libraries(skred_repl PRIVATE replfltk pikchr ${SKRED_API_LIBRARY})
+    if(WIN32)
+        target_link_libraries(skred_repl PRIVATE ws2_32 winmm ole32)
+    endif()
     set_target_properties(skred_repl PROPERTIES
         LINKER_LANGUAGE CXX
         OUTPUT_NAME "skrepl"
