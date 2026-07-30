@@ -781,7 +781,9 @@ void repl_free_string(char *s) {
 
 void repl_add_fd(int fd, repl_fd_fn cb, void *userdata) {
     if (fd < 0 || !cb) return;
-    Fl::add_fd(fd, FL_READ, cb, userdata);
+    /* MSVC rejects converting repl_fd_fn (int) to Fl_FD_Handler (FL_SOCKET).
+       On Windows FL_SOCKET is SOCKET; values that fit in int are fine for our use. */
+    Fl::add_fd(fd, FL_READ, reinterpret_cast<Fl_FD_Handler>(cb), userdata);
 }
 
 void repl_remove_fd(int fd) {
