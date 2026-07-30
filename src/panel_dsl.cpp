@@ -38,11 +38,17 @@
 
 namespace {
 
+#if defined(__GNUC__) || defined(__clang__)
+#define SKRED_WEAK __attribute__((weak))
+#else
+#define SKRED_WEAK
+#endif
+
 #if HAS_SKRED_VFS
 extern "C" {
-__attribute__((weak)) bool skred_vfs_read_file(const char *filepath, void **data, size_t *size);
-__attribute__((weak)) void skred_vfs_free_file(void *data);
-__attribute__((weak)) const char *skred_vfs_root(void);
+SKRED_WEAK bool skred_vfs_read_file(const char *filepath, void **data, size_t *size);
+SKRED_WEAK void skred_vfs_free_file(void *data);
+SKRED_WEAK const char *skred_vfs_root(void);
 }
 #endif
 

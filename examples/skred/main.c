@@ -869,13 +869,19 @@ static int fltk_repl_foreign_call(const skred_foreign_call_t *call, void *user) 
 #endif
 
 /* Native zero-overhead C API declarations for live drum performance pads */
+#if defined(__GNUC__) || defined(__clang__)
+#define SKRED_WEAK __attribute__((weak))
+#else
+#define SKRED_WEAK
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-    int skred_trigger_voice(int voice, float velocity) __attribute__((weak));
-    int skred_set_voice_pitch(int voice, float pitch_hz_or_note) __attribute__((weak));
-    int skred_trigger_voice_pitch_velocity(int voice, float pitch_hz_or_note, float velocity) __attribute__((weak));
-    int skred_release_voice(int voice) __attribute__((weak));
+    int skred_trigger_voice(int voice, float velocity) SKRED_WEAK;
+    int skred_set_voice_pitch(int voice, float pitch_hz_or_note) SKRED_WEAK;
+    int skred_trigger_voice_pitch_velocity(int voice, float pitch_hz_or_note, float velocity) SKRED_WEAK;
+    int skred_release_voice(int voice) SKRED_WEAK;
 #ifdef __cplusplus
 }
 #endif
