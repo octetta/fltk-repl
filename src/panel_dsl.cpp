@@ -13,6 +13,12 @@
 #include <FL/Fl_Menu_Item.H>
 #include <FL/fl_draw.H>
 
+#ifdef _WIN32
+#ifndef strcasecmp
+#define strcasecmp _stricmp
+#endif
+#endif
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
