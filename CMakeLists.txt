@@ -126,7 +126,6 @@ if(SKRED_BUILD_REPL)
 
         file(MAKE_DIRECTORY "${VENDOR_DIR}")
         set(_archive "skred-${SKRED_VERSION}-maxed-${_skred_platform}.${_skred_archive_extension}")
-        # Allow selecting the owner/repo containing Skred release assets (default: octetta/pulp)
         set(SKRED_DOWNLOAD_OWNER "octetta" CACHE STRING "GitHub owner containing Skred release assets")
         set(SKRED_DOWNLOAD_REPO "pulp" CACHE STRING "GitHub repo containing Skred release assets")
         set(_url "https://github.com/${SKRED_DOWNLOAD_OWNER}/${SKRED_DOWNLOAD_REPO}/releases/download/v${SKRED_VERSION}/${_archive}")
@@ -141,12 +140,10 @@ if(SKRED_BUILD_REPL)
             message(FATAL_ERROR "Failed to download Skred from ${_url}\nCheck the release page: https://github.com/octetta/pulp/releases")
         endif()
 
-        # Optional SHA256 verification for the downloaded archive.
         option(SKRED_VERIFY_SHA256 "Verify Skred archive SHA256 after download" ON)
         set(SKRED_SHA256 "${SKRED_SHA256}" CACHE STRING "Expected SHA256 for Skred archive (leave empty to auto-fetch ${_url}.sha256)")
 
         if(SKRED_VERIFY_SHA256)
-            # If no explicit checksum provided, try to fetch a .sha256 next to the release asset.
             if(NOT SKRED_SHA256)
                 execute_process(
                     COMMAND curl -sSfL -o "${_archive}.sha256" "${_url}.sha256"
@@ -161,7 +158,6 @@ if(SKRED_BUILD_REPL)
             endif()
 
             if(SKRED_SHA256)
-                # Compute actual SHA256 using CMake builtin when available, else fall back to external sha256sum.
                 if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.17")
                     file(SHA256 "${VENDOR_DIR}/${_archive}" _actual_sha256)
                 else()
@@ -195,7 +191,26 @@ if(SKRED_BUILD_REPL)
         endif()
     endif()
 
-    set(SKRED_ROOT "${SKRED_DIR}")
+    # Zip top-level dir can differ by platform (esp. Windows).
+    if(EXISTS "${SKRED_DIR}/include/skred/api.h")
+        set(SKRED_ROOT "${SKRED_DIR}")
+    else()
+        file(GLOB _skred_candidates
+            "${VENDOR_DIR}/skred-${SKRED_VERSION}-maxed*"
+            "${VENDOR_DIR}/skred-${SKRED_VERSION}-maxed*/*")
+        set(SKRED_ROOT "")
+        foreach(_cand IN LISTS _skred_candidates)
+            if(EXISTS "${_cand}/include/skred/api.h")
+                set(SKRED_ROOT "${_cand}")
+                break()
+            endif()
+        endforeach()
+        if(NOT SKRED_ROOT)
+            message(FATAL_ERROR
+                "Could not find skred/api.h under ${VENDOR_DIR} after download. "
+                "Expected something like ${SKRED_DIR}/include/skred/api.h")
+        endif()
+    endif()
     message(STATUS "Using downloaded Skred: ${SKRED_ROOT}")
 
     find_path(SKRED_INCLUDE_DIR NAMES skred/api.h HINTS "${SKRED_ROOT}/include" NO_DEFAULT_PATH)
@@ -341,7 +356,6 @@ endif()
 
 # ---------------------------------------------------------------------
 # KSynth (optional)
-# Only fetch/build KSynth and the krepl target when explicitly requested
 # ---------------------------------------------------------------------
 option(KREPL_BUILD "Build the krepl KSynth demo executable" OFF)
 if(KREPL_BUILD)

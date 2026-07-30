@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release tag (e.g. v0.5.2). Required for manual runs.'
+        description: 'Release tag (e.g. v0.5.4). Required for manual runs.'
         required: true
-        default: 'v0.5.2'
+        default: 'v0.5.4'
       skred_version:
         description: 'Skred version to download from octetta/pulp'
         required: true
@@ -76,9 +76,11 @@ jobs:
           update: true
           install: >-
             mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-g++
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-curl
+            mingw-w64-x86_64-pkgconf
             git
 
       - name: Configure & build (Linux)
@@ -114,6 +116,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
+          set -euo pipefail
+          which cmake g++ ninja curl
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DSKRED_BUILD_REPL=ON \
@@ -122,7 +126,8 @@ jobs:
             -DKREPL_BUILD=OFF \
             -DREPL_BUILD_DEMO=OFF \
             -DBUILD_TESTING=OFF
-          cmake --build build --target skred_repl -j
+          cmake --build build --target skred_repl -j --verbose
+          ls -la build/
           test -f build/skrepl.exe
 
       - name: Package
@@ -154,7 +159,6 @@ jobs:
           NAME="skrepl-${VERSION}-${PLATFORM}"
           mkdir -p "pkg/${NAME}"
           cp -v build/skrepl.exe "pkg/${NAME}/"
-          # static link → no libapi.dll required
           cd pkg
           powershell.exe -Command "Compress-Archive -Path '${NAME}' -DestinationPath '../${NAME}.zip' -Force"
           cd ..
@@ -177,7 +181,6 @@ jobs:
     name: Publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    # Publish even if one OS failed, as long as at least one artifact exists
     if: always() && needs.build.result != 'cancelled'
 
     steps:
