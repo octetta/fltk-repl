@@ -17,7 +17,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
 #include <unistd.h>
+#else
+/* MSVC: POSIX names map to CRT equivalents */
+#define strdup _strdup
+#define strtok_r strtok_s
+#endif
 
 #if __has_include(<skred/skred_vfs.h>)
 #include <skred/skred_vfs.h>
