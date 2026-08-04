@@ -54,8 +54,17 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <io.h>
+#include <time.h>
+#define unlink _unlink
+#define usleep(x) Sleep((x)/1000)
+#define strdup _strdup
+#else
 #include <sys/time.h>
 #include <unistd.h>
+#endif
 
 /* ---- global state -------------------------------------------------------- */
 
@@ -777,8 +786,7 @@ static void handle_backslash_cmd(const char *line) {
         if (!v_name) { repl_println(g_repl, "/ \\s: no variable"); return; }
         K v = g_ctx->vars[v_name - 'A'];
         if (!v) { repl_printf(g_repl, "/ %c is empty\n", v_name); return; }
-        struct timeval tv; gettimeofday(&tv, NULL);
-        char name[64]; snprintf(name, sizeof(name), "%c-%ld.wav", v_name, (long)tv.tv_sec);
+        char name[64]; snprintf(name, sizeof(name), "%c-%ld.wav", v_name, (long)time(NULL));
         ma_uint32 chans = stereo ? 2 : 1;
         write_wav(name, v->f, stereo ? (ma_uint64)(v->n/2) : (ma_uint64)v->n, chans, 44100);
 
@@ -787,8 +795,7 @@ static void handle_backslash_cmd(const char *line) {
         if (!v_name) { repl_println(g_repl, "/ \\c: no variable"); return; }
         K v = g_ctx->vars[v_name - 'A'];
         if (!v) { repl_printf(g_repl, "/ %c is empty\n", v_name); return; }
-        char fname[64]; struct timeval tv; gettimeofday(&tv, NULL);
-        snprintf(fname, sizeof(fname), "%c-%ld.h", v_name, (long)tv.tv_sec);
+        char fname[64]; snprintf(fname, sizeof(fname), "%c-%ld.h", v_name, (long)time(NULL));
         FILE *f = fopen(fname, "w"); if (!f) { repl_printf(g_repl, "/ cannot write %s\n", fname); return; }
         fprintf(f, "float %c[%d] = {\n", v_name, v->n);
         int col = 0;

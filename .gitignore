@@ -2,7 +2,7 @@ x/*
 vendor/*
 *.zip
 build/
-build-*/
+build*/
 cmake-build-*/
 *.o
 *.obj

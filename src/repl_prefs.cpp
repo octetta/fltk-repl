@@ -49,7 +49,7 @@ repl_prefs *repl_prefs_create(repl_prefs_root root, const char *vendor, const ch
 repl_prefs *repl_prefs_create_path(const char *path, const char *vendor, const char *application) {
     if (!path || !vendor || !application) return nullptr;
     auto *rp = new repl_prefs();
-    rp->p = new Fl_Preferences(path, vendor, application);
+    rp->p = new Fl_Preferences(path, vendor, application, Fl_Preferences::USER);
     rp->owned = true;
     return rp;
 }

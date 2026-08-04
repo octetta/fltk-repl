@@ -21,6 +21,9 @@
 #include <unistd.h>
 #else
 /* MSVC: POSIX names map to CRT equivalents */
+#include <direct.h>
+#define getcwd _getcwd
+#define chdir _chdir
 #define strdup _strdup
 #define strtok_r strtok_s
 #endif

@@ -17,7 +17,10 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 typedef int socklen_t;
-typedef int ssize_t;   /* MSVC has no POSIX ssize_t */
+#if defined(_MSC_VER)
+#include <BaseTsd.h>
+typedef SSIZE_T ssize_t; /* MSVC POSIX equivalent */
+#endif
 #endif
 
 static void udp_read_cb(int fd, void *userdata) {
