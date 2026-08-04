@@ -65,12 +65,6 @@ jobs:
             libx11-dev libxft-dev libxcursor-dev libxinerama-dev libxrender-dev \
             libpng-dev libjpeg-dev libfreetype6-dev
 
-      - name: Setup MSVC + Ninja (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
       - name: Install Ninja (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -105,11 +99,11 @@ jobs:
           cmake --build build --target skred_repl -j
           test -d build/skrepl.app
 
-      - name: Configure & build (Windows MSVC)
+      - name: Configure & build (Windows MinGW)
         if: runner.os == 'Windows'
         shell: cmd
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DSKRED_VERSION=${{ steps.ver.outputs.skred }} -DSKRED_VERIFY_SHA256=OFF -DKREPL_BUILD=OFF -DREPL_BUILD_DEMO=OFF -DBUILD_TESTING=OFF
+          cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DSKRED_BUILD_REPL=ON -DSKRED_VERSION=${{ steps.ver.outputs.skred }} -DSKRED_VERIFY_SHA256=OFF -DKREPL_BUILD=OFF -DREPL_BUILD_DEMO=OFF -DBUILD_TESTING=OFF
           cmake --build build --target skred_repl -j
           dir /s /b build\skrepl.exe
 
@@ -141,8 +135,6 @@ jobs:
           $exe = Get-ChildItem -Path build -Recurse -Filter skrepl.exe | Select-Object -First 1
           if (-not $exe) { throw "skrepl.exe not found" }
           Copy-Item $exe.FullName "pkg/$NAME/"
-          Get-ChildItem -Path vendor -Recurse -Filter "*.dll" -ErrorAction SilentlyContinue |
-            ForEach-Object { Copy-Item $_.FullName "pkg/$NAME/" -Force }
           Compress-Archive -Path "pkg/$NAME" -DestinationPath "$NAME.zip" -Force
           $hash = (Get-FileHash -Algorithm SHA256 "$NAME.zip").Hash.ToLower()
           "$hash  $NAME.zip" | Out-File -Encoding ascii "$NAME.zip.sha256"
