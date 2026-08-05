@@ -192,7 +192,7 @@ if(SKRED_BUILD_REPL)
             message(STATUS "Skred: using ${SKRED_API_LIBRARY}")
         endif()
     else()
-        find_library(SKRED_API_LIBRARY NAMES api
+        find_library(SKRED_API_LIBRARY NAMES libapi.a
             HINTS "${SKRED_ROOT}/lib64" "${SKRED_ROOT}/lib" NO_DEFAULT_PATH)
     endif()
 
@@ -238,26 +238,10 @@ if(SKRED_BUILD_REPL)
             BUILD_RPATH "@executable_path/../Frameworks"
         )
 
-        file(GLOB _skred_macos_dylibs "${SKRED_ROOT}/lib/*.dylib")
-        if(NOT _skred_macos_dylibs)
-            message(FATAL_ERROR "Skred macOS package contains no dylibs")
-        endif()
-
         find_program(FLTK_REPL_CODESIGN_EXECUTABLE codesign)
         if(FLTK_REPL_ADHOC_SIGN AND NOT FLTK_REPL_CODESIGN_EXECUTABLE)
             message(FATAL_ERROR "codesign is required for FLTK_REPL_ADHOC_SIGN")
         endif()
-
-        add_custom_command(TARGET skred_repl POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E make_directory
-                "$<TARGET_BUNDLE_DIR:skred_repl>/Contents/Frameworks"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${_skred_macos_dylibs}
-                "$<TARGET_BUNDLE_DIR:skred_repl>/Contents/Frameworks"
-            COMMENT "Bundling Skred libraries in skrepl.app"
-            COMMAND_EXPAND_LISTS
-            VERBATIM
-        )
         if(FLTK_REPL_ADHOC_SIGN)
             add_custom_command(TARGET skred_repl POST_BUILD
                 COMMAND "${FLTK_REPL_CODESIGN_EXECUTABLE}"
@@ -269,17 +253,6 @@ if(SKRED_BUILD_REPL)
         endif()
     elseif(WIN32)
         set_target_properties(skred_repl PROPERTIES WIN32_EXECUTABLE FALSE)
-        file(GLOB _skred_win_dlls "${SKRED_ROOT}/lib/*.dll" "${SKRED_ROOT}/bin/*.dll")
-        if(_skred_win_dlls)
-            add_custom_command(TARGET skred_repl POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    ${_skred_win_dlls}
-                    "$<TARGET_FILE_DIR:skred_repl>"
-                COMMENT "Copying Skred DLLs next to skrepl.exe"
-                COMMAND_EXPAND_LISTS
-                VERBATIM
-            )
-        endif()
     endif()
 endif()
 
