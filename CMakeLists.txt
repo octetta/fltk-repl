@@ -19,6 +19,10 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 
+if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    add_link_options("-static" "-static-libgcc" "-static-libstdc++")
+endif()
+
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchFLTK.cmake)
 
 if(NOT FLTK_VERSION OR FLTK_VERSION VERSION_LESS "1.4.0")
