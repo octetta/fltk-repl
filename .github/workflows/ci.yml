@@ -34,9 +34,9 @@ jobs:
           path: |
             build/_deps
             vendor
-          key: ${{ runner.os }}-deps-${{ hashFiles('**/CMakeLists.txt','**/cmake/**') }}
+          key: ${{ runner.os }}-deps-v2-${{ hashFiles('**/CMakeLists.txt','**/cmake/**') }}
           restore-keys: |
-            ${{ runner.os }}-deps-
+            ${{ runner.os }}-deps-v2-
 
       - name: Configure (PR - light, Windows)
         if: github.event_name == 'pull_request' && runner.os == 'Windows'
