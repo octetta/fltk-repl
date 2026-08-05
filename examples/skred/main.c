@@ -581,6 +581,25 @@ static void bitmap_panel_handler(const char *line, void *userdata) {
         return;
     }
 
+    if (strcmp(cmd, "zip") == 0) {
+        char *file = repl_open_file_dialog(app->repl, "Select Zip Archive to Mount", "Zip Archives (*.zip)\t*.zip\nAll Files (*)\t*");
+        if (file) {
+#if HAS_SKRED_VFS
+            if (skred_vfs_mount(file)) {
+                repl_printf(app->repl, "Successfully mounted ZIP archive: %s\n", file);
+            } else {
+                repl_printf(app->repl, "Failed to mount ZIP archive: %s\n", file);
+            }
+#else
+            repl_println(app->repl, "ZIP mounting is not supported (no VFS).");
+#endif
+            repl_free_string(file);
+        } else {
+            repl_println(app->repl, "ZIP mount cancelled.");
+        }
+        return;
+    }
+
     if (strcmp(cmd, "browse") == 0) {
         char sub[64] = {0}, arg2[192] = {0};
         int n2 = (n >= 2) ? sscanf(arg, "%63s %191[^\n]", sub, arg2) : 0;
@@ -751,6 +770,7 @@ static void gui_help(int argc, char **argv, void *userdata) {
         "  theme light|dark|custom|save     switch or save interface color theme\n"
         "  font [\"name\" [size]]             change or view terminal font\n"
         "  cd [path] / pwd / browse         navigation & file chooser dialogs\n"
+        "  zip                              mount a .zip archive via file dialog\n"
         "  boot [voices N] [frames N]       restart Skred engine with parameters\n"
         "  clear                            clear scrollback text\n"
         "  credits                          display credits and project links\n"
