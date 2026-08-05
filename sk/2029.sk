@@ -1,6 +1,6 @@
 # 2029.sk: Iconic Amen Break Chop & Sub Bass 16-Step Groove
 # -------------------------------------------------------------
-M 165
+M 140
 
 # Wave Slots:
 # 100: Kick
@@ -12,14 +12,14 @@ M 165
 [sk/drums-snare.ks]/ks 1 k>d d>r /r101
 [sk/drums-chh.ks]/ks 1 k>d d>r /r102
 [sk/drums-ohh.ks]/ks 1 k>d d>r /r103
-[sk/gm-bass-sub.ks]/ks 1 k>d d>r /r104
 
 # Voice Assignments:
-v0 w100 f440 a10          # Kick (Natural unpitched playback)
-v1 w101 f440 a8           # Snare
+v0 w100 f440 a15          # Kick (Natural unpitched playback)
+v1 w101 f440 a15          # Snare
 v2 w102 f440 a3           # Closed Hat
-v3 w103 f440 a5           # Open Hat
-v4 w104 f440 a10          # Sub Bass (Pitched via note numbers)
+v3 w103 f440 a20          # Open Hat
+v4 w15 f440 a0 G5H5 t 0 .25 0 0           # Sub Bass (Pitched via note numbers)
+v5 w16 f440 a0 N0,25 t 0 .25 0 0
 
 # 16-Step Pattern (Full 4/4 Bar @ 165 BPM)
 y0

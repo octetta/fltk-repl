@@ -1,6 +1,6 @@
 # 2025.sk: Trap & IDM Micro-Ratchets (z*3 Triplet, z*4 32nd, z*8 64th)
 # --------------------------------------------------------------------
-M 140
+M 120
 
 # Load bundled Ksynth drum & lead patches:
 [sk/drums-kick.ks]/ks 1 k>d d>r /r100
@@ -9,10 +9,10 @@ M 140
 [sk/gm-lead-moog.ks]/ks 1 k>d d>r /r103
 
 # Voice Assignments (Drum voices trigger at natural pitch f440):
-v0 w100 f440 a10          # Kick
-v1 w101 f440 a8           # Snare
-v2 w102 f440 a3           # Closed Hat
-v3 w103 f440 a8           # Moog Lead
+v0 w100 f440 a20          # Kick
+v1 w101 f440 a15           # Snare
+v2 w102 f440 a5           # Closed Hat
+v3 w103 f440 a8 N-12      # Moog Lead
 
 # 16-Step Trap Pattern with Micro-Ratchet Hat & Snare Rolls
 y0
@@ -32,6 +32,12 @@ y0
 [v2l0.4] x13
 [v2l0.4 z*4] x14          # 32nd-Note Hat Burst
 [v1l0.9 z*8] x15          # 64th-Note Ultra-Fast Snare Roll Fill!
+
+y1 %32
+[v3N-15] x0
+[v3N-12] x1
+[v3N-5] x2
+[v3N-24] x3
 
 # Start Pattern
 Z1

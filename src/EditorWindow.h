@@ -49,6 +49,7 @@ private:
     Fl_Box *statusBox_ = nullptr;
 
     std::string filepath_;
+    std::string vfsSourceName_;
     std::string titleBuf_;
     bool isModified_ = false;
     ReplColors colors_;

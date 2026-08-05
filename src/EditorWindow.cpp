@@ -10,6 +10,15 @@
 
 #include "repl/repl_api.h"
 
+#if __has_include(<skred/skred_vfs.h>)
+#include <skred/skred_vfs.h>
+#define HAS_SKRED_VFS 1
+extern "C" {
+SKRED_WEAK bool skred_vfs_read_file(const char *filepath, void **data, size_t *size);
+SKRED_WEAK void skred_vfs_free_file(void *data);
+}
+#endif
+
 static EditorWindow *g_editor_win = nullptr;
 
 // ---------------------------------------------------------------------
@@ -129,6 +138,9 @@ void EditorWindow::onModifyCallback(int pos, int nInserted, int nDeleted,
 
 void EditorWindow::updateTitleAndStatus() {
     std::string name = filepath_.empty() ? "Untitled" : filepath_;
+    if (filepath_.empty() && !vfsSourceName_.empty()) {
+        name = "Copy of " + vfsSourceName_;
+    }
     if (isModified_) name += " *";
     titleBuf_ = "fltk-repl Editor - " + name;
     copy_label(titleBuf_.c_str());
@@ -138,10 +150,37 @@ void EditorWindow::updateTitleAndStatus() {
 bool EditorWindow::openFile(const std::string &filepath) {
     if (buffer_->loadfile(filepath.c_str()) == 0) {
         filepath_ = filepath;
+        vfsSourceName_.clear();
         isModified_ = false;
         updateTitleAndStatus();
         return true;
     }
+
+#if HAS_SKRED_VFS
+    if (skred_vfs_read_file) {
+        void *data = nullptr;
+        size_t size = 0;
+        if (skred_vfs_read_file(filepath.c_str(), &data, &size)) {
+            if (data && size > 0) {
+                std::string content(static_cast<const char *>(data), size);
+                buffer_->text(content.c_str());
+            } else {
+                buffer_->text("");
+            }
+            if (skred_vfs_free_file && data) {
+                skred_vfs_free_file(data);
+            }
+            
+            // Treat VFS loaded files as read-only copies
+            filepath_ = ""; 
+            vfsSourceName_ = filepath;
+            isModified_ = false; 
+            updateTitleAndStatus();
+            return true;
+        }
+    }
+#endif
+
     return false;
 }
 

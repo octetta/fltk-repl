@@ -1,0 +1,4 @@
+zip showoff.zip
+panel load demo demo.pnl
+panel list
+quit

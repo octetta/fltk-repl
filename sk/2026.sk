@@ -4,7 +4,7 @@
 #   1. Dynamic Step Clock Modulo (z%1 = 16th notes, z%2 = 8th notes half-speed)
 #   2. Downbeat Pattern Queueing (zq1 = queue next pattern to enter on beat 1)
 # -------------------------------------------------------------------------
-M 120
+M 80
 
 # 1. Load bundled Ksynth drum patches into sample slots:
 [sk/drums-kick.ks]/ks 1 k>d d>r /r100
@@ -13,8 +13,8 @@ M 120
 [sk/drums-tomhi.ks]/ks 1 k>d d>r /r103
 
 # 2. Voice Assignments (using f440 natural sample root frequency):
-v0 w100 f440 a10          # Kick
-v1 w101 f440 a8           # Snare
+v0 w100 f440 a20          # Kick
+v1 w101 f440 a15          # Snare
 v2 w102 f440 a6           # Closed Hi-Hat
 v3 w103 f440 a8           # High Tom
 

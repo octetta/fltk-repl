@@ -68,7 +68,7 @@ static bool read_file_content(const char *path, std::string &out_content) {
 
     // 2. Fall back to Skred VFS for mounted zip/virtual paths (only if VFS is active)
 #if HAS_SKRED_VFS
-    if (skred_vfs_root && skred_vfs_root() != nullptr && skred_vfs_read_file) {
+    if (skred_vfs_read_file) {
         void *data = nullptr;
         size_t size = 0;
         if (skred_vfs_read_file(path, &data, &size)) {
