@@ -1,25 +1,23 @@
 # 2030.sk: LinnDrum 80s Synthwave & Italo-Disco 16-Step Groove
 # -------------------------------------------------------------
-M 118
+M 80
 
 # Wave Slots:
 # 100: Kick (Linn Thud)
 # 101: Snare (Linn Crack)
 # 102: Closed Hi-Hat
 # 103: Mid Tom
-# 104: Synthwave Octave Bass
 [sk/drums-kick.ks]/ks 1 k>d d>r /r100
 [sk/drums-snare.ks]/ks 1 k>d d>r /r101
 [sk/drums-chh.ks]/ks 1 k>d d>r /r102
 [sk/drums-midtom.ks]/ks 1 k>d d>r /r103
-[sk/nap-bass-grind.ks]/ks 1 k>d d>r /r104
 
 # Voice Assignments:
 v0 w100 f440 a10          # Kick (Natural unpitched playback)
 v1 w101 f440 a8           # Snare
 v2 w102 f440 a3           # Closed Hat
 v3 w103 f440 a6           # Mid Tom
-v4 w104 f440 a6           # Grind Octave Bass (Pitched via note numbers)
+v4 w15 f440 a6 t 0 .25 0 0 #
 
 # 16-Step Pattern (Full 4/4 Bar @ 118 BPM)
 y0
