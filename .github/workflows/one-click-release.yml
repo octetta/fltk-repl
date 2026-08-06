@@ -89,6 +89,7 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
             -DSKRED_BUILD_REPL=ON \
             -DSKRED_VERSION=${{ steps.ver.outputs.skred }} \
             -DSKRED_VERIFY_SHA256=OFF \

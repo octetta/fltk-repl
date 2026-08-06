@@ -101,7 +101,7 @@ else()
 endif()
 
 option(SKRED_BUILD_REPL "Build Skred REPL" ${FLTK_REPL_IS_TOP_LEVEL})
-set(SKRED_VERSION "0.55.6" CACHE STRING "Skred version to use")
+set(SKRED_VERSION "0.55.9" CACHE STRING "Skred version to use")
 set(SKRED_ROOT "" CACHE PATH "Path to skred package (auto-filled)")
 
 set(VENDOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor")
@@ -234,6 +234,7 @@ if(SKRED_BUILD_REPL)
             MACOSX_BUNDLE TRUE
             MACOSX_BUNDLE_INFO_PLIST
                 "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Info.plist.in"
+            MACOSX_BUNDLE_EXECUTABLE_NAME "skrepl"
             MACOSX_BUNDLE_BUNDLE_NAME "skrepl"
             MACOSX_BUNDLE_GUI_IDENTIFIER "org.octetta.skrepl"
             MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
