@@ -234,7 +234,6 @@ if(SKRED_BUILD_REPL)
             MACOSX_BUNDLE TRUE
             MACOSX_BUNDLE_INFO_PLIST
                 "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Info.plist.in"
-            MACOSX_BUNDLE_EXECUTABLE_NAME "skrepl"
             MACOSX_BUNDLE_BUNDLE_NAME "skrepl"
             MACOSX_BUNDLE_GUI_IDENTIFIER "org.octetta.skrepl"
             MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
