@@ -101,7 +101,7 @@ else()
 endif()
 
 option(SKRED_BUILD_REPL "Build Skred REPL" ${FLTK_REPL_IS_TOP_LEVEL})
-set(SKRED_VERSION "0.55.9" CACHE STRING "Skred version to use")
+set(SKRED_VERSION "0.56.8" CACHE STRING "Skred version to use")
 set(SKRED_ROOT "" CACHE PATH "Path to skred package (auto-filled)")
 
 set(VENDOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor")
