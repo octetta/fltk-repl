@@ -65,7 +65,7 @@ On macOS, the build produces `build/skrepl.app` (or `build/repl_demo`), bundles 
 
 - `-DSKRED_BUILD_REPL=OFF`: Disable Skred download/build to compile only the generic `replfltk` library and `repl_demo`.
 - `-DREPL_FLTK_DIR=/path/to/fltk`: Use a local offline FLTK 1.4 source directory instead of downloading FLTK.
-- `-DSKRED_VERSION=0.56.8`: Select a specific Skred release version.
+- `-DSKRED_VERSION=0.58.5`: Select a specific Skred release version.
 
 ---
 
